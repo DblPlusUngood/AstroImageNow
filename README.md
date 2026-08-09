@@ -1,4 +1,4 @@
-# Astrophotography Tonight
+# AstroImageNow?
 
 A polished personal dashboard using the official Astrospheric Data API v2.
 
@@ -65,3 +65,11 @@ the actual API response shape and merges optional variable calls by
   - the next upcoming night otherwise.
 - It will no longer concatenate dark hours from multiple forecast nights.
 - This build is intended to be the first deployment/install candidate.
+
+## v1.6 — App identity and Home Screen icon
+
+- Changes the visible, browser, Apple web-app, and PWA name to **AstroImageNow?**.
+- Adds a custom dark-sky telescope icon with green, yellow, and red status cues.
+- Adds dedicated 180 px, 192 px, and 512 px PNG icons for Apple and PWA installs.
+- Updates the service-worker cache so existing installations receive the new branding.
+- Preserves the complete v1.5 forecast, night-selection, and scoring implementation.

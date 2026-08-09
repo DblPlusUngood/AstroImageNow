@@ -1,1 +1,39 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#08111f"/><circle cx="256" cy="256" r="154" fill="none" stroke="#22c55e" stroke-width="34"/><path d="M132 302c60-20 89-84 137-109 35-18 68-8 111 9" fill="none" stroke="#f4f7fb" stroke-width="26" stroke-linecap="round"/><circle cx="337" cy="164" r="24" fill="#f4f7fb"/><circle cx="172" cy="171" r="11" fill="#f4f7fb"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Telescope under a dark sky above a green, yellow, and red status horizon">
+  <defs>
+    <linearGradient id="sky" x1="64" y1="24" x2="448" y2="488" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#10243a"/>
+      <stop offset=".58" stop-color="#081525"/>
+      <stop offset="1" stop-color="#050b14"/>
+    </linearGradient>
+    <linearGradient id="tube" x1="135" y1="190" x2="380" y2="276" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f5f8fc"/>
+      <stop offset="1" stop-color="#c8d6e5"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" fill="url(#sky)"/>
+  <circle cx="256" cy="248" r="168" fill="none" stroke="#28435c" stroke-width="7" opacity=".45"/>
+
+  <path d="M112 73v70M77 108h70" stroke="#f5f8fc" stroke-width="9" stroke-linecap="round"/>
+  <circle cx="112" cy="108" r="11" fill="#f5f8fc"/>
+  <circle cx="391" cy="96" r="9" fill="#60a5fa"/>
+  <circle cx="344" cy="71" r="5" fill="#dce8f3"/>
+  <circle cx="415" cy="157" r="4" fill="#dce8f3" opacity=".75"/>
+
+  <g transform="rotate(-38 256 235)">
+    <rect x="129" y="190" width="249" height="86" rx="34" fill="url(#tube)"/>
+    <rect x="110" y="204" width="49" height="58" rx="18" fill="#536b82"/>
+    <rect x="342" y="184" width="47" height="98" rx="20" fill="#8da5bc"/>
+    <rect x="376" y="194" width="22" height="78" rx="11" fill="#60a5fa"/>
+    <path d="M174 196v74" stroke="#9fb4c8" stroke-width="6" opacity=".7"/>
+  </g>
+
+  <path d="M231 280h50l17 41h-84z" fill="#71869a"/>
+  <circle cx="256" cy="302" r="30" fill="#dce7f2" stroke="#0a1726" stroke-width="11"/>
+  <circle cx="256" cy="302" r="10" fill="#60a5fa"/>
+  <path d="M246 329 180 409M256 332v91M266 329l66 80" fill="none" stroke="#dce7f2" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <path d="M106 405c28 24 62 40 101 47" fill="none" stroke="#22c55e" stroke-width="20" stroke-linecap="round"/>
+  <path d="M225 455c20 2 42 2 62 0" fill="none" stroke="#eab308" stroke-width="20" stroke-linecap="round"/>
+  <path d="M305 452c39-7 73-23 101-47" fill="none" stroke="#ef4444" stroke-width="20" stroke-linecap="round"/>
+</svg>
