@@ -73,3 +73,11 @@ the actual API response shape and merges optional variable calls by
 - Adds dedicated 180 px, 192 px, and 512 px PNG icons for Apple and PWA installs.
 - Updates the service-worker cache so existing installations receive the new branding.
 - Preserves the complete v1.5 forecast, night-selection, and scoring implementation.
+
+## v1.7 — iPhone layout corrections
+
+- Respects the iPhone top and bottom safe areas in standalone Home Screen mode.
+- Stacks the app title and controls on narrow screens so they cannot collide.
+- Locks the score ring to a true circle even when the mobile layout is compressed.
+- Advances the service-worker cache so installed copies receive the corrected layout.
+- Makes no changes to forecast retrieval, night selection, or scoring.
