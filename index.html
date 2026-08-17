@@ -125,6 +125,61 @@
       .profile-toolbar{grid-template-columns:1fr}
       .quick-location{max-width:100%;width:100%}
     }
+    .label-row{display:flex;align-items:center;gap:6px;min-width:0}
+    .info-button{
+      width:19px;
+      height:19px;
+      flex:0 0 19px;
+      display:inline-grid;
+      place-items:center;
+      padding:0;
+      border:1px solid #52637a;
+      border-radius:50%;
+      background:#101d30;
+      color:#cbd7e5;
+      font-size:12px;
+      font-weight:800;
+      line-height:1;
+      cursor:pointer;
+    }
+    .info-button:hover,.info-button:focus-visible{border-color:#8fa4bd;background:#192a42;outline:none}
+    .weather-strip{
+      display:grid;
+      grid-template-columns:repeat(4,minmax(0,1fr));
+      gap:0;
+      margin-top:12px;
+      padding:0;
+      overflow:hidden;
+    }
+    .weather-item{min-width:0;padding:13px 15px;border-right:1px solid var(--line)}
+    .weather-item:nth-child(4){border-right:0}
+    .weather-value{margin-top:3px;color:#f4f7fb;font-size:17px;font-weight:750;line-height:1.25;overflow-wrap:anywhere}
+    .weather-note{grid-column:1 / -1;padding:9px 15px;border-top:1px solid var(--line);color:var(--muted);font-size:12px;line-height:1.4}
+    .target-select{margin-top:10px;padding:8px 10px;font-size:13px}
+    .plan-detail{margin-top:7px;color:var(--muted);font-size:13px;line-height:1.4}
+    .prepare-line{margin-top:8px;color:#dbe5ef;font-size:13px;line-height:1.45}
+    .info-dialog{
+      width:min(520px,calc(100% - 28px));
+      padding:0;
+      border:1px solid #41526a;
+      border-radius:8px;
+      background:#0d1829;
+      color:var(--text);
+      box-shadow:0 24px 70px rgba(0,0,0,.55);
+    }
+    .info-dialog::backdrop{background:rgba(2,8,20,.72)}
+    .info-dialog-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line)}
+    .info-dialog-head h2{margin:0;font-size:18px;letter-spacing:0}
+    .dialog-close{width:34px;height:34px;padding:0;font-size:22px;line-height:1}
+    .info-dialog-body{padding:16px;color:#dce5ef;line-height:1.55}
+    .info-dialog-body p{margin:0 0 11px}
+    .info-dialog-body p:last-child{margin-bottom:0}
+    .provider-fields{margin-top:15px;padding-top:14px;border-top:1px solid var(--line)}
+    @media(max-width:680px){
+      .weather-strip{grid-template-columns:1fr 1fr}
+      .weather-item:nth-child(2){border-right:0}
+      .weather-item:nth-child(-n+2){border-bottom:1px solid var(--line)}
+    }
   </style>
 </head>
 <body>
@@ -133,6 +188,10 @@
     <h2>Settings</h2>
     <div id="setupError" class="error hidden"></div>
     <div class="field"><label for="apiKey">Astrospheric API key</label><input id="apiKey" type="password" autocomplete="off" placeholder="Paste API key" /></div>
+    <div class="provider-fields">
+      <div class="field"><label for="weatherSource">Weather source</label><select id="weatherSource"><option value="foreca-fallback">Foreca with Open-Meteo backup</option><option value="foreca">Foreca only</option><option value="open-meteo">Open-Meteo only</option></select></div>
+      <div class="field" id="forecaTokenField"><label for="forecaToken">Foreca API token</label><input id="forecaToken" type="password" autocomplete="off" placeholder="Paste Foreca token" /></div>
+    </div>
     <div class="profile-toolbar">
       <div class="field"><label for="savedLocationSelect">Saved location</label><select id="savedLocationSelect"></select></div>
       <div class="setup-actions"><button class="btn" id="newLocation" type="button">Add location</button><button class="btn danger" id="deleteLocation" type="button">Delete</button></div>
@@ -144,19 +203,30 @@
       <div class="field threshold-control" id="thresholdControl"><label for="alertThreshold">Alert threshold</label><input id="alertThreshold" type="range" min="0" max="2" step="1" value="0" /><div class="threshold-labels"><span>Yellow</span><span>Lime</span><span>Green</span></div></div>
     </div>
     <div class="setup-actions"><button class="btn primary" id="saveSetup">Save &amp; open dashboard</button><button class="btn" id="cancelSetup" type="button">Cancel</button><button class="btn" id="useLocation">Use approximate current location</button></div>
-    <div class="notice">For a shared/public deployment, use a server-side secret instead. This build is intentionally optimized for private personal devices.</div>
+    <div class="notice">API credentials stay in this browser. The Astrospheric key goes only to Astrospheric; the Foreca token goes only to Foreca. Weather coordinates are rounded to two decimal places. For a shared deployment, move credentials to a server-side secret.</div>
   </section>
   <main id="dashboard" class="hidden">
     <header><div><h1>AstroImageNow</h1><div class="sub" id="headerSub">—</div></div><div class="top-actions"><select class="quick-location hidden" id="quickLocationSelect" aria-label="Active observing location"></select><button class="btn" id="refreshBtn">Refresh</button><button class="btn" id="settingsBtn">Settings</button></div></header>
     <div id="errorBox" class="error hidden"></div><div id="diagWrap" class="hidden"><div class="setup-actions"><button class="btn" id="diagBtn">Show diagnostics</button><button class="btn" id="testKnownBtn">Test Astrospheric example site</button></div><pre id="diagBox" class="diagnostic hidden"></pre></div>
-    <section class="grid hero-grid"><div class="card hero" id="hero"><div class="hero-row"><div><div class="label"><span id="locationLabel">—</span><span class="bortle-ref hidden" id="bortleRef"></span></div><div class="status-line"><span class="badge" id="statusBadge">—</span><span class="status-title" id="statusTitle">Loading…</span></div><div class="hero-copy" id="statusCopy">Retrieving Astrospheric forecast.</div><div class="night-chip" id="nightChip">Finding astronomical darkness…</div></div><div class="score-ring" id="scoreRing">—</div></div></div><div class="card"><div class="label">Best imaging window</div><div class="window" id="bestWindow">—</div><div class="sub" id="bestWindowTime">—</div><div class="scale"><span class="marker" id="windowMarker"></span></div><div class="scale-labels"><span>Poor</span><span>Marginal</span><span>Excellent</span></div></div></section>
+    <section class="grid hero-grid"><div class="card hero" id="hero"><div class="hero-row"><div><div class="label label-row"><span id="locationLabel">—</span><span class="bortle-ref hidden" id="bortleRef"></span><button class="info-button" type="button" data-info="bortle" aria-label="About Bortle class">i</button></div><div class="status-line"><span class="badge" id="statusBadge">—</span><span class="status-title" id="statusTitle">Loading…</span></div><div class="hero-copy" id="statusCopy">Retrieving Astrospheric forecast.</div><div class="night-chip" id="nightChip">Finding astronomical darkness…</div></div><div class="score-ring" id="scoreRing">—</div></div></div><div class="card"><div class="label">Best imaging window</div><div class="window" id="bestWindow">—</div><div class="sub" id="bestWindowTime">—</div><div class="scale"><span class="marker" id="windowMarker"></span></div><div class="scale-labels"><span>Poor</span><span>Marginal</span><span>Excellent</span></div></div></section>
     <section class="grid metrics" id="metricGrid"></section>
+    <section class="card weather-strip" id="weatherStrip" aria-label="Selected night weather">
+      <div class="weather-item"><div class="label">Now</div><div class="weather-value" id="weatherNow">—</div></div>
+      <div class="weather-item"><div class="label">Night low</div><div class="weather-value" id="weatherLow">—</div></div>
+      <div class="weather-item"><div class="label">Rain</div><div class="weather-value" id="weatherRain">—</div></div>
+      <div class="weather-item"><div class="label label-row">Weather watch <button class="info-button" type="button" data-info="visibility" aria-label="About visibility and weather watch">i</button></div><div class="weather-value" id="weatherWatch">—</div></div>
+      <div class="weather-note" id="weatherNote">Supplemental weather is loading.</div>
+    </section>
     <div class="section-title">Upcoming nights</div><p class="section-sub" id="outlookSub">Select a night to inspect its dark hours and best imaging window.</p><section class="outlook-grid" id="nightOutlook" aria-label="Upcoming night forecast"></section>
     <div class="section-title" id="nightDetailTitle">Tonight at a glance</div><p class="section-sub">Green is favorable. Yellow deserves attention. Red is a meaningful limitation.</p><section class="card timeline" id="timeline"></section>
-    <section class="grid triple" style="margin-top:12px"><div class="card" id="moonCard"><div class="label">Moon</div><div class="detail-value" id="moonValue">—</div><div class="metric-status" id="moonStatus">—</div><div class="sub" id="moonDetail">—</div></div><div class="card" id="dewCard"><div class="label">Dew margin</div><div class="detail-value" id="dewValue">—</div><div class="metric-status" id="dewStatus">—</div><div class="sub" id="dewDetail">—</div></div><div class="card" id="adviceCard"><div class="label">Operational recommendation</div><div class="detail-value" id="adviceTitle">—</div><div class="advice" id="adviceText">—</div></div></section>
+    <section class="grid triple" style="margin-top:12px"><div class="card" id="moonCard"><div class="label label-row">Moon <button class="info-button" type="button" data-info="moon" aria-label="About Moon context">i</button></div><div class="detail-value" id="moonValue">—</div><div class="metric-status" id="moonStatus">—</div><div class="sub" id="moonDetail">—</div></div><div class="card" id="dewCard"><div class="label label-row">Dew margin <button class="info-button" type="button" data-info="dew" aria-label="About dew margin">i</button></div><div class="detail-value" id="dewValue">—</div><div class="metric-status" id="dewStatus">—</div><div class="sub" id="dewDetail">—</div></div><div class="card" id="planCard"><div class="label">Session plan</div><div class="detail-value" id="filterValue">—</div><div class="plan-detail" id="filterReason">—</div><select class="target-select" id="targetSelect" aria-label="Target type"><option value="emission">Emission nebula</option><option value="broadband">Galaxy or cluster</option><option value="reflection">Reflection or dust</option><option value="other">Other or equipment test</option></select><div class="prepare-line" id="prepareLine">—</div></div></section>
     <details class="card"><summary>Scoring details</summary><div id="scoreDetails"></div><div class="footer">The GO / MARGINAL / NO-GO assessment is derived by this app from Astrospheric data; it is not an official Astrospheric rating.</div></details><div class="footer" id="footer">—</div>
   </main>
 </div>
+<dialog class="info-dialog" id="infoDialog" aria-labelledby="infoTitle">
+  <div class="info-dialog-head"><h2 id="infoTitle">About this condition</h2><button class="btn dialog-close" id="infoClose" type="button" aria-label="Close">×</button></div>
+  <div class="info-dialog-body" id="infoBody"></div>
+</dialog>
 <script src="app.js"></script>
 
 </body></html>
