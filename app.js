@@ -1,7 +1,9 @@
 "use strict";
 
 const API_BASE="https://v2-api-public.astrospheric.com/api";
-const WEATHER_API_BASE="https://api.open-meteo.com/v1/forecast";
+const FORECA_API_BASE="https://pfa.foreca.com/api/v1";
+const OPEN_METEO_API_BASE="https://api.open-meteo.com/v1/forecast";
+const OPEN_METEO_AIR_API_BASE="https://air-quality-api.open-meteo.com/v1/air-quality";
 const SETTINGS_KEY="astroImageNowSettings";
 const LEGACY_SETTINGS_KEY="astroTonightSettings";
 const COLORS={green:"#22c55e",lime:"#84cc16",yellow:"#eab308",orange:"#f97316",red:"#ef4444",blue:"#60a5fa"};
@@ -11,6 +13,7 @@ const ALERT_THRESHOLDS=[
   {id:"green",label:"Green",score:80,color:COLORS.green}
 ];
 const TARGET_TYPES=["emission","broadband","reflection","other"];
+const WEATHER_SOURCES=["foreca-fallback","foreca","open-meteo"];
 const INFO_CONTENT={
   cloud:{
     title:"Cloud cover",
@@ -55,6 +58,7 @@ const state={
   forecast:null,
   weather:null,
   weatherError:"",
+  weatherNotice:"",
   moons:[],
   sun:null,
   selectedNightIndex:0,
@@ -79,6 +83,10 @@ function normalizeAlertThreshold(value){
 
 function normalizeTargetType(value){
   return TARGET_TYPES.includes(value)?value:"emission";
+}
+
+function normalizeWeatherSource(value){
+  return WEATHER_SOURCES.includes(value)?value:"foreca-fallback";
 }
 
 function normalizeLocation(location,idFallback=createLocationId()){
@@ -109,8 +117,10 @@ function normalizeSettings(raw){
   const requestedActive=String(raw.activeLocationId||locations[0].id);
   const activeLocationId=locations.some(location=>location.id===requestedActive)?requestedActive:locations[0].id;
   return{
-    version:3,
+    version:4,
     apiKey:String(raw.apiKey||""),
+    forecaToken:String(raw.forecaToken||""),
+    weatherSource:normalizeWeatherSource(raw.weatherSource),
     targetType:normalizeTargetType(raw.targetType),
     activeLocationId,
     locations
@@ -267,10 +277,77 @@ async function api(endpoint,body){
   return data;
 }
 
-async function fetchSupplementalWeather(location){
+function roundedWeatherLocation(location){
+  return{
+    lat:Math.round(Number(location.lat)*100)/100,
+    lon:Math.round(Number(location.lon)*100)/100
+  };
+}
+
+async function fetchJson(url,options,provider){
+  const response=await fetch(url,options);
+  let data={};
+  try{data=await response.json()}catch{}
+  if(!response.ok)throw new Error(`${provider} returned HTTP ${response.status}${data.reason||data.message?`: ${data.reason||data.message}`:""}`);
+  return data;
+}
+
+function normalizeForecaWeather(currentData,hourlyData,airData={}){
+  const current=currentData.current||currentData;
+  const forecast=Array.isArray(hourlyData.forecast)?hourlyData.forecast:[];
+  const airForecast=Array.isArray(airData.forecast)?airData.forecast:[];
+  const airByTime=new Map(airForecast.map(item=>[weatherTimeMs(item.time),item]));
+  const pick=(key,fallback=null)=>forecast.map(item=>item[key]??fallback);
+  const pickAir=key=>forecast.map(item=>airByTime.get(weatherTimeMs(item.time))?.[key]??null);
+  return{
+    meta:{provider:"foreca",label:"Weather data by Foreca",url:"https://www.foreca.com/",hasAirQuality:airForecast.length>0},
+    current:{
+      temperature_2m:current.temperature,
+      apparent_temperature:current.feelsLikeTemp,
+      relative_humidity_2m:current.relHumidity,
+      weather_code:null,
+      weather_phrase:current.symbolPhrase||"",
+      precipitation:current.precipAccum,
+      visibility:current.visibility,
+      wind_gusts_10m:current.windGust
+    },
+    hourly_units:{visibility:"m"},
+    hourly:{
+      time:pick("time"),
+      temperature_2m:pick("temperature"),
+      relative_humidity_2m:pick("relHumidity"),
+      precipitation_probability:pick("precipProb"),
+      precipitation:pick("precipAccum"),
+      weather_code:pick("weatherCode"),
+      weather_phrase:pick("symbolPhrase",""),
+      thunder_probability:pick("thunderProb"),
+      visibility:pick("visibility"),
+      wind_gusts_10m:pick("windGust"),
+      us_aqi:pickAir("AQI"),
+      us_aqi_pm2_5:pickAir("AQI_PM2P5"),
+      pm2_5:pickAir("PM2P5")
+    }
+  };
+}
+
+async function fetchForecaWeather(location,token){
+  const rounded=roundedWeatherLocation(location);
+  const point=`${rounded.lon},${rounded.lat}`;
+  const headers={Authorization:`Bearer ${token}`};
+  const query="tempunit=F&windunit=MPH&tz=UTC";
+  const [current,hourly,air]=await Promise.all([
+    fetchJson(`${FORECA_API_BASE}/current/${point}?${query}`,{headers},"Foreca"),
+    fetchJson(`${FORECA_API_BASE}/forecast/hourly/${point}?periods=168&dataset=full&${query}`,{headers},"Foreca"),
+    fetchJson(`${FORECA_API_BASE}/air-quality/forecast/hourly/${point}?periods=84&tz=UTC`,{headers},"Foreca").catch(()=>({forecast:[]}))
+  ]);
+  return normalizeForecaWeather(current,hourly,air);
+}
+
+async function fetchOpenMeteoWeather(location){
+  const rounded=roundedWeatherLocation(location);
   const params=new URLSearchParams({
-    latitude:String(location.lat),
-    longitude:String(location.lon),
+    latitude:String(rounded.lat),
+    longitude:String(rounded.lon),
     current:"temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,precipitation,visibility,wind_gusts_10m",
     hourly:"temperature_2m,relative_humidity_2m,precipitation_probability,precipitation,weather_code,visibility,wind_gusts_10m",
     temperature_unit:"fahrenheit",
@@ -279,11 +356,49 @@ async function fetchSupplementalWeather(location){
     timezone:"GMT",
     forecast_days:"8"
   });
-  const response=await fetch(`${WEATHER_API_BASE}?${params}`);
-  let data={};
-  try{data=await response.json()}catch{}
-  if(!response.ok)throw new Error(data.reason||`Open-Meteo returned HTTP ${response.status}`);
+  const airParams=new URLSearchParams({
+    latitude:String(rounded.lat),
+    longitude:String(rounded.lon),
+    hourly:"us_aqi,us_aqi_pm2_5,pm2_5,aerosol_optical_depth",
+    timezone:"GMT",
+    forecast_days:"5"
+  });
+  const [data,air]=await Promise.all([
+    fetchJson(`${OPEN_METEO_API_BASE}?${params}`,{},"Open-Meteo"),
+    fetchJson(`${OPEN_METEO_AIR_API_BASE}?${airParams}`,{},"Open-Meteo air quality").catch(()=>null)
+  ]);
+  data.meta={provider:"open-meteo",label:"Weather data by Open-Meteo",url:"https://open-meteo.com/",hasAirQuality:Boolean(air)};
+  if(air?.hourly?.time){
+    const airByTime=new Map(air.hourly.time.map((time,index)=>[weatherTimeMs(time),index]));
+    for(const key of ["us_aqi","us_aqi_pm2_5","pm2_5","aerosol_optical_depth"]){
+      data.hourly[key]=data.hourly.time.map(time=>{
+        const index=airByTime.get(weatherTimeMs(time));
+        return index===undefined?null:air.hourly[key]?.[index]??null;
+      });
+    }
+  }
   return data;
+}
+
+async function fetchSupplementalWeather(location,settings=state.settings){
+  const source=normalizeWeatherSource(settings?.weatherSource);
+  const token=String(settings?.forecaToken||"").trim();
+  state.weatherNotice="";
+  if(source==="open-meteo")return fetchOpenMeteoWeather(location);
+  if(!token){
+    if(source==="foreca")throw new Error("Foreca only is selected, but no Foreca API token is saved.");
+    state.weatherNotice="Foreca token not configured; using Open-Meteo backup.";
+    return fetchOpenMeteoWeather(location);
+  }
+  try{return await fetchForecaWeather(location,token)}
+  catch(error){
+    if(source==="foreca")throw error;
+    state.weatherNotice="Foreca unavailable; using Open-Meteo backup.";
+    const backup=await fetchOpenMeteoWeather(location);
+    backup.meta.fallbackFrom="foreca";
+    backup.meta.fallbackReason=error.message;
+    return backup;
+  }
 }
 
 function weatherTimeMs(value){
@@ -296,7 +411,12 @@ function finiteValues(values){
   return values.filter(value=>value!==null&&value!==undefined&&value!=="").map(Number).filter(Number.isFinite);
 }
 
+function optionalNumber(value){
+  return value===null||value===undefined||value===""?NaN:Number(value);
+}
+
 function visibilityToMiles(value,unit="m"){
+  if(value===null||value===undefined||value==="")return null;
   const numeric=Number(value);
   if(!Number.isFinite(numeric))return null;
   const normalized=String(unit).toLowerCase();
@@ -316,13 +436,19 @@ function weatherSummaryForRows(rows,weather=state.weather){
     return{
       time,
       timeMs:weatherTimeMs(time),
-      temperature:Number(weather.hourly.temperature_2m?.[index]),
-      rainProbability:Number(weather.hourly.precipitation_probability?.[index]),
-      precipitation:Number(weather.hourly.precipitation?.[index]),
-      code:Number(weather.hourly.weather_code?.[index]),
-      visibility:Number(visibility),
+      temperature:optionalNumber(weather.hourly.temperature_2m?.[index]),
+      rainProbability:optionalNumber(weather.hourly.precipitation_probability?.[index]),
+      precipitation:optionalNumber(weather.hourly.precipitation?.[index]),
+      code:optionalNumber(weather.hourly.weather_code?.[index]),
+      phrase:String(weather.hourly.weather_phrase?.[index]||""),
+      thunderProbability:optionalNumber(weather.hourly.thunder_probability?.[index]),
+      visibility:optionalNumber(visibility),
       visibilityMiles:visibilityToMiles(visibility,visibilityUnit),
-      gust:Number(weather.hourly.wind_gusts_10m?.[index])
+      gust:optionalNumber(weather.hourly.wind_gusts_10m?.[index]),
+      aqi:optionalNumber(weather.hourly.us_aqi?.[index]),
+      aqiPm25:optionalNumber(weather.hourly.us_aqi_pm2_5?.[index]),
+      pm25:optionalNumber(weather.hourly.pm2_5?.[index]),
+      aerosolOpticalDepth:optionalNumber(weather.hourly.aerosol_optical_depth?.[index])
     };
   }).filter(entry=>entry.timeMs>=start&&entry.timeMs<=end);
   if(!entries.length)return null;
@@ -332,16 +458,25 @@ function weatherSummaryForRows(rows,weather=state.weather){
   const precipitation=finiteValues(entries.map(entry=>entry.precipitation));
   const visibilityMilesValues=finiteValues(entries.map(entry=>entry.visibilityMiles));
   const gusts=finiteValues(entries.map(entry=>entry.gust));
+  const aqiValues=finiteValues(entries.map(entry=>entry.aqi));
+  const aqiPm25Values=finiteValues(entries.map(entry=>entry.aqiPm25));
+  const pm25Values=finiteValues(entries.map(entry=>entry.pm25));
+  const aerosolValues=finiteValues(entries.map(entry=>entry.aerosolOpticalDepth));
   const low=temperatures.length?Math.min(...temperatures):null;
   const rain=rainProbabilities.length?Math.max(...rainProbabilities):null;
   const rainAmount=precipitation.length?precipitation.reduce((sum,value)=>sum+value,0):null;
   const visibilityMiles=visibilityMilesValues.length?Math.min(...visibilityMilesValues):null;
   const gust=gusts.length?Math.max(...gusts):null;
-  const stormEntry=entries.find(entry=>entry.code>=95);
-  const fogEntry=entries.find(entry=>entry.code===45||entry.code===48);
+  const aqi=aqiValues.length?Math.max(...aqiValues):null;
+  const aqiPm25=aqiPm25Values.length?Math.max(...aqiPm25Values):null;
+  const pm25=pm25Values.length?Math.max(...pm25Values):null;
+  const aerosolOpticalDepth=aerosolValues.length?Math.max(...aerosolValues):null;
+  const stormEntry=entries.find(entry=>entry.code>=95||entry.thunderProbability>=30||/thunder/i.test(entry.phrase));
+  const fogEntry=entries.find(entry=>entry.code===45||entry.code===48||/fog|mist/i.test(entry.phrase));
   const rainEntry=entries.find(entry=>entry.rainProbability>=50||entry.precipitation>=0.03);
   const visibilityEntry=entries.find(entry=>entry.visibilityMiles!==null&&entry.visibilityMiles<6);
   const gustEntry=entries.find(entry=>entry.gust>=18);
+  const airEntry=entries.find(entry=>entry.aqi>=101||entry.aqiPm25>=101||entry.aerosolOpticalDepth>=0.4);
 
   let watch="No major hazard";
   let watchTime=null;
@@ -352,17 +487,23 @@ function weatherSummaryForRows(rows,weather=state.weather){
   else if(gust!==null&&gust>=25){watch="Strong gusts";watchTime=gustEntry?.time||null;severity="danger"}
   else if(rain!==null&&rain>=25){watch="Rain possible";watchTime=rainEntry?.time||null;severity="watch"}
   else if(visibilityMiles!==null&&visibilityMiles<6){watch="Haze / fog possible";watchTime=visibilityEntry?.time||null;severity="watch"}
+  else if(aqi!==null&&aqi>=101||aqiPm25!==null&&aqiPm25>=101||aerosolOpticalDepth!==null&&aerosolOpticalDepth>=0.4){watch="Smoke / air quality";watchTime=airEntry?.time||null;severity="watch"}
   else if(gust!==null&&gust>=18){watch="Gusty";watchTime=gustEntry?.time||null;severity="watch"}
 
   return{
     entries,
-    currentTemperature:Number.isFinite(Number(weather.current?.temperature_2m))?Number(weather.current.temperature_2m):null,
-    currentApparent:Number.isFinite(Number(weather.current?.apparent_temperature))?Number(weather.current.apparent_temperature):null,
+    currentTemperature:Number.isFinite(optionalNumber(weather.current?.temperature_2m))?Number(weather.current.temperature_2m):null,
+    currentApparent:Number.isFinite(optionalNumber(weather.current?.apparent_temperature))?Number(weather.current.apparent_temperature):null,
     low,
     rain,
     rainAmount,
     visibilityMiles,
     gust,
+    aqi,
+    aqiPm25,
+    pm25,
+    aerosolOpticalDepth,
+    provider:weather.meta?.provider||"unknown",
     watch,
     watchTime,
     severity
@@ -374,7 +515,10 @@ function filterRecommendation({targetType,bortle,moon,transparency,weather}){
   const illumination=Number(moon?.IlluminationPercent||0);
   const brightMoon=Boolean(moon?.IsAboveHorizon)&&illumination>=35;
   const brightSite=Number.isFinite(Number(bortle))&&Number(bortle)>=5;
-  const reducedClarity=Number(transparency)<48||weather?.visibilityMiles!==null&&weather?.visibilityMiles<6;
+  const reducedClarity=Number(transparency)<48
+    ||weather?.visibilityMiles!==null&&weather?.visibilityMiles<6
+    ||weather?.aqi!==null&&weather?.aqi>=101
+    ||weather?.aerosolOpticalDepth!==null&&weather?.aerosolOpticalDepth>=0.4;
 
   if(target==="emission"){
     if(reducedClarity)return{title:"Dual-band optional",reason:"It can improve emission contrast, but haze or poor transparency still removes target signal."};
@@ -636,12 +780,24 @@ function renderWeatherAndPlan(rows,timeZone,components,moon){
     const diagnostic=[];
     if(weather.visibilityMiles!==null)diagnostic.push(`Visibility ${weather.visibilityMiles.toFixed(weather.visibilityMiles<10?1:0)} mi`);
     if(weather.gust!==null)diagnostic.push(`Gusts to ${Math.round(weather.gust)} mph`);
+    if(weather.aqi!==null)diagnostic.push(`Air quality index ${Math.round(weather.aqi)}`);
     if(components.transparency<48&&weather.visibilityMiles!==null){
       diagnostic.push(weather.visibilityMiles<6
         ?"Reduced surface visibility may be contributing to poor transparency"
         :"Surface visibility looks normal; elevated haze, moisture, or the astronomy model may explain poor transparency");
     }
-    $("weatherNote").innerHTML=`${diagnostic.join(" · ")}${diagnostic.length?" · ":""}<a href="https://open-meteo.com/" target="_blank" rel="noopener">Weather data by Open-Meteo</a>`;
+    const note=$("weatherNote");
+    const source=state.weather?.meta||{label:"Supplemental weather source",url:"#"};
+    const prefix=[state.weatherNotice,...diagnostic].filter(Boolean).join(" · ");
+    note.replaceChildren();
+    if(prefix)note.append(`${prefix} · `);
+    const link=document.createElement("a");
+    link.href=source.url;
+    link.target="_blank";
+    link.rel="noopener";
+    link.textContent=source.label;
+    note.append(link);
+    if(source.provider==="open-meteo"&&source.hasAirQuality)note.append(" · Air-quality data incorporates CAMS");
   }else{
     $("weatherNow").textContent="—";
     $("weatherLow").textContent="—";
@@ -816,6 +972,7 @@ async function refresh(){
   state.diagnostic="";
   state.weather=null;
   state.weatherError="";
+  state.weatherNotice="";
   try{
     const location=activeLocation();
     if(!location)throw new Error("Select a valid observing location.");
@@ -823,7 +980,6 @@ async function refresh(){
     const forecastOptions={...common,ForecastLength:168,PrettyPrint:true};
     const weatherPromise=fetchSupplementalWeather(location).catch(error=>{
       state.weatherError=error.message;
-      state.diagnostic+=`\n\nSUPPLEMENTAL WEATHER ERROR\n${error.message}`;
       return null;
     });
     const core=await api("GetForecastData",{
@@ -847,6 +1003,7 @@ async function refresh(){
     }));
     state.forecast={...core,...extra,HourlyForecast:mergedHourly};
     state.weather=await weatherPromise;
+    if(state.weatherError)state.diagnostic+=`\n\nSUPPLEMENTAL WEATHER ERROR\n${state.weatherError}`;
     state.selectedNightIndex=0;
 
     state.moons=await fetchNightMoons(common);
@@ -874,6 +1031,11 @@ function updateThresholdControl(){
   const threshold=ALERT_THRESHOLDS[Number(input.value)]||ALERT_THRESHOLDS[0];
   $("thresholdControl").style.setProperty("--threshold-color",threshold.color);
   input.setAttribute("aria-valuetext",`${threshold.label}, score ${threshold.score} or higher`);
+}
+
+function updateWeatherSourceControl(){
+  const source=normalizeWeatherSource($("weatherSource").value);
+  $("forecaTokenField").classList.toggle("hidden",source==="open-meteo");
 }
 
 function fillLocationForm(location){
@@ -933,6 +1095,9 @@ function showSetup(){
   $("setupView").classList.remove("hidden");
   state.settings=state.settings||storedSettings();
   $("apiKey").value=state.settings?.apiKey||"";
+  $("forecaToken").value=state.settings?.forecaToken||"";
+  $("weatherSource").value=normalizeWeatherSource(state.settings?.weatherSource);
+  updateWeatherSourceControl();
   $("cancelSetup").classList.toggle("hidden",!state.settings);
   if(state.settings){
     selectLocationForEditing(state.settings.activeLocationId);
@@ -959,6 +1124,8 @@ function openDashboard(){
 function initialize(){
   $("saveSetup").addEventListener("click",()=>{
     const apiKey=$("apiKey").value.trim();
+    const forecaToken=$("forecaToken").value.trim();
+    const weatherSource=normalizeWeatherSource($("weatherSource").value);
     const location={
       id:state.editingLocationId||createLocationId(),
       name:$("locationName").value.trim()||"Observing location",
@@ -972,6 +1139,11 @@ function initialize(){
       $("setupError").classList.remove("hidden");
       return;
     }
+    if(weatherSource==="foreca"&&!forecaToken){
+      $("setupError").textContent="Foreca only requires a Foreca API token. Add the token or select a source with Open-Meteo.";
+      $("setupError").classList.remove("hidden");
+      return;
+    }
     if(!Number.isFinite(location.lat)||location.lat<-90||location.lat>90||!Number.isFinite(location.lon)||location.lon<-180||location.lon>180){
       $("setupError").textContent="Enter valid latitude and longitude.";
       $("setupError").classList.remove("hidden");
@@ -982,8 +1154,10 @@ function initialize(){
     if(existingIndex>=0)locations[existingIndex]=location;
     else locations.push(location);
     saveSettings({
-      version:3,
+      version:4,
       apiKey,
+      forecaToken,
+      weatherSource,
       targetType:state.settings?.targetType||"emission",
       activeLocationId:location.id,
       locations
@@ -991,6 +1165,8 @@ function initialize(){
     state.editingLocationId=location.id;
     openDashboard();
   });
+
+  $("weatherSource").addEventListener("change",updateWeatherSourceControl);
 
   $("savedLocationSelect").addEventListener("change",event=>{
     selectLocationForEditing(event.target.value);
@@ -1144,6 +1320,7 @@ if(typeof module!=="undefined"){
     normalizeBortle,
     normalizeAlertThreshold,
     normalizeTargetType,
+    normalizeWeatherSource,
     normalizeLocation,
     normalizeSettings,
     activeLocation,
@@ -1166,6 +1343,9 @@ if(typeof module!=="undefined"){
     findBestWindowForRows,
     summaryForNight,
     weatherTimeMs,
+    roundedWeatherLocation,
+    normalizeForecaWeather,
+    fetchSupplementalWeather,
     visibilityToMiles,
     weatherSummaryForRows,
     filterRecommendation,

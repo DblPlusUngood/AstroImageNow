@@ -42,10 +42,76 @@ test("settings migration preserves locations and defaults the target type",()=>{
     activeLocationId:"home",
     locations:[{id:"home",name:"Home",lat:44.9,lon:-85.2,bortle:4,alertThreshold:"green"}]
   });
-  assert.equal(settings.version,3);
+  assert.equal(settings.version,4);
   assert.equal(settings.targetType,"emission");
+  assert.equal(settings.weatherSource,"foreca-fallback");
+  assert.equal(settings.forecaToken,"");
   assert.equal(settings.locations[0].bortle,4);
   assert.equal(settings.locations[0].alertThreshold,"green");
+});
+
+test("weather source selection validates known choices",()=>{
+  assert.equal(app.normalizeWeatherSource("foreca"),"foreca");
+  assert.equal(app.normalizeWeatherSource("open-meteo"),"open-meteo");
+  assert.equal(app.normalizeWeatherSource("unknown"),"foreca-fallback");
+});
+
+test("weather providers receive coordinates rounded to two decimals",()=>{
+  assert.deepEqual(app.roundedWeatherLocation({lat:44.98028,lon:-85.21117}),{lat:44.98,lon:-85.21});
+});
+
+test("Foreca data normalizes into the provider-independent weather shape",()=>{
+  const normalized=app.normalizeForecaWeather(
+    {current:{temperature:61,feelsLikeTemp:59,relHumidity:72,visibility:16000,windGust:11,symbolPhrase:"partly cloudy"}},
+    {forecast:[{time:"2026-08-17T01:00:00Z",temperature:54,relHumidity:80,precipProb:5,precipAccum:0,visibility:12000,windGust:9,thunderProb:0,symbolPhrase:"clear"}]},
+    {forecast:[{time:"2026-08-17T01:00:00Z",AQI:112,AQI_PM2P5:112,PM2P5:39}]}
+  );
+  assert.equal(normalized.meta.provider,"foreca");
+  assert.equal(normalized.current.temperature_2m,61);
+  assert.equal(normalized.hourly.visibility[0],12000);
+  assert.equal(normalized.hourly.us_aqi[0],112);
+});
+
+test("air quality can produce a supporting smoke warning",()=>{
+  const rows=[forecastRow("2026-08-17T01:00:00Z")];
+  const weather={
+    meta:{provider:"foreca"},
+    current:{temperature_2m:65},
+    hourly_units:{visibility:"m"},
+    hourly:{
+      time:["2026-08-17T01:00:00Z"],temperature_2m:[60],precipitation_probability:[0],precipitation:[0],
+      weather_code:[0],weather_phrase:["clear"],thunder_probability:[0],visibility:[16000],wind_gusts_10m:[5],us_aqi:[112]
+    }
+  };
+  const summary=app.weatherSummaryForRows(rows,weather);
+  assert.equal(summary.watch,"Smoke / air quality");
+  assert.equal(summary.severity,"watch");
+  assert.equal(summary.provider,"foreca");
+});
+
+test("Foreca-preferred mode falls back to Open-Meteo when no token is configured",async()=>{
+  const originalFetch=global.fetch;
+  const requested=[];
+  global.fetch=async input=>{
+    const url=String(input);
+    requested.push(url);
+    const payload=url.includes("air-quality-api")
+      ?{hourly:{time:["2026-08-17T01:00"],us_aqi:[20],us_aqi_pm2_5:[20],pm2_5:[4],aerosol_optical_depth:[0.05]}}
+      :{current:{temperature_2m:60},hourly_units:{visibility:"m"},hourly:{time:["2026-08-17T01:00"],temperature_2m:[55],precipitation_probability:[0],precipitation:[0],weather_code:[0],visibility:[16000],wind_gusts_10m:[5]}};
+    return new Response(JSON.stringify(payload),{status:200,headers:{"Content-Type":"application/json"}});
+  };
+  try{
+    const result=await app.fetchSupplementalWeather(
+      {lat:44.98028,lon:-85.21117},
+      {weatherSource:"foreca-fallback",forecaToken:""}
+    );
+    assert.equal(result.meta.provider,"open-meteo");
+    assert.match(app.state.weatherNotice,/using Open-Meteo backup/);
+    assert.equal(requested.length,2);
+    assert.ok(requested.every(url=>url.includes("latitude=44.98")&&url.includes("longitude=-85.21")));
+  }finally{
+    global.fetch=originalFetch;
+  }
 });
 
 test("weather summary aligns UTC hourly data to the selected dark period",()=>{

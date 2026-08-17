@@ -8,10 +8,12 @@ Open `index.html` in a modern browser.
 
 On first launch:
 1. Paste your Astrospheric API key.
-2. Bellaire, Michigan is preloaded as the default location.
-3. Press **Save & open dashboard**.
+2. Choose **Foreca with Open-Meteo backup**, **Foreca only**, or **Open-Meteo only**.
+3. Paste a Foreca token when using a Foreca option. The backup mode works with Open-Meteo until a token is added.
+4. Bellaire, Michigan is preloaded as the default location.
+5. Press **Save & open dashboard**.
 
-The API key is stored in that browser's local storage on that device. It is not embedded in the source files.
+The API credentials and weather-source choice are stored in that browser's local storage on that device. They are not embedded in the source files.
 
 ## Install like an app / PWA
 
@@ -28,7 +30,8 @@ For a true Home Screen / standalone app experience, serve this folder over HTTPS
 - Hour-by-hour condition bands
 - Explainable component scores
 - API credit display
-- Compact current temperature, selected-night low, precipitation, visibility, fog/storm, and gust context from Open-Meteo
+- User-selectable Foreca or Open-Meteo supplemental weather, with an optional automatic backup
+- Compact current temperature, selected-night low, precipitation, visibility, fog/storm, gust, and air-quality context
 - Educational condition explanations behind small information buttons
 - Target-aware filter guidance and concise preparation reminders
 
@@ -38,9 +41,9 @@ This is an app-derived astrophotography assessment, not an official Astrospheric
 
 ## Security
 
-This build is intended for private personal devices. For public/shared hosting, do not use browser storage for the API key; move API calls behind a server-side proxy and keep the key as a server secret.
+This build is intended for private personal devices. For public/shared hosting, do not use browser storage for API credentials; move authenticated API calls behind a server-side proxy and keep credentials as server secrets.
 
-The browser sends the selected latitude and longitude to Astrospheric for the astronomy forecast and to Open-Meteo for supplemental weather. The weather request contains no Astrospheric API key. Weather data is provided by [Open-Meteo](https://open-meteo.com/) under its published attribution terms.
+The browser sends the exact selected coordinates to Astrospheric for the astronomy forecast. Supplemental weather requests use coordinates rounded to two decimal places. The Astrospheric key is sent only to Astrospheric; the Foreca token is sent only to Foreca. Weather data is provided by [Foreca](https://www.foreca.com/) or [Open-Meteo](https://open-meteo.com/), according to the selected source. Open-Meteo air-quality data incorporates Copernicus Atmosphere Monitoring Service (CAMS) forecasts.
 
 
 ## v1.3 — API response parser corrected
@@ -102,7 +105,10 @@ the actual API response shape and merges optional variable calls by
 ## v1.9 — Practical session planning
 
 - Preserves all v1.8 forecast scoring weights, thresholds, hard limiters, and night-selection behavior.
-- Adds a compact weather strip with current temperature, selected-night low, precipitation probability, and meaningful fog, storm, visibility, or gust warnings.
+- Adds a compact weather strip with current temperature, selected-night low, precipitation probability, and meaningful fog, storm, visibility, gust, smoke, or air-quality warnings.
+- Adds an explicit weather-source setting: Foreca with Open-Meteo backup, Foreca only, or Open-Meteo only.
+- Normalizes both providers into one internal weather model; supplemental weather never changes the preserved Astrospheric astronomy score.
+- Rounds supplemental-weather coordinates to two decimal places and keeps provider credentials in browser-local settings only.
 - Keeps general-weather visibility secondary to Astrospheric transparency and shows it mainly as supporting diagnostic context.
 - Adds focused information dialogs for Cloud, Transparency, Seeing, Wind, Moon, Dew margin, Bortle class, and visibility.
 - Adds a session target selector with generic filter guidance for emission, broadband, reflection/dust, and equipment-test plans.

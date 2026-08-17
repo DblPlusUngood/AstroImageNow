@@ -174,6 +174,7 @@
     .info-dialog-body{padding:16px;color:#dce5ef;line-height:1.55}
     .info-dialog-body p{margin:0 0 11px}
     .info-dialog-body p:last-child{margin-bottom:0}
+    .provider-fields{margin-top:15px;padding-top:14px;border-top:1px solid var(--line)}
     @media(max-width:680px){
       .weather-strip{grid-template-columns:1fr 1fr}
       .weather-item:nth-child(2){border-right:0}
@@ -187,6 +188,10 @@
     <h2>Settings</h2>
     <div id="setupError" class="error hidden"></div>
     <div class="field"><label for="apiKey">Astrospheric API key</label><input id="apiKey" type="password" autocomplete="off" placeholder="Paste API key" /></div>
+    <div class="provider-fields">
+      <div class="field"><label for="weatherSource">Weather source</label><select id="weatherSource"><option value="foreca-fallback">Foreca with Open-Meteo backup</option><option value="foreca">Foreca only</option><option value="open-meteo">Open-Meteo only</option></select></div>
+      <div class="field" id="forecaTokenField"><label for="forecaToken">Foreca API token</label><input id="forecaToken" type="password" autocomplete="off" placeholder="Paste Foreca token" /></div>
+    </div>
     <div class="profile-toolbar">
       <div class="field"><label for="savedLocationSelect">Saved location</label><select id="savedLocationSelect"></select></div>
       <div class="setup-actions"><button class="btn" id="newLocation" type="button">Add location</button><button class="btn danger" id="deleteLocation" type="button">Delete</button></div>
@@ -198,7 +203,7 @@
       <div class="field threshold-control" id="thresholdControl"><label for="alertThreshold">Alert threshold</label><input id="alertThreshold" type="range" min="0" max="2" step="1" value="0" /><div class="threshold-labels"><span>Yellow</span><span>Lime</span><span>Green</span></div></div>
     </div>
     <div class="setup-actions"><button class="btn primary" id="saveSetup">Save &amp; open dashboard</button><button class="btn" id="cancelSetup" type="button">Cancel</button><button class="btn" id="useLocation">Use approximate current location</button></div>
-    <div class="notice">For a shared/public deployment, use a server-side secret instead. This build is intentionally optimized for private personal devices.</div>
+    <div class="notice">API credentials stay in this browser. The Astrospheric key goes only to Astrospheric; the Foreca token goes only to Foreca. Weather coordinates are rounded to two decimal places. For a shared deployment, move credentials to a server-side secret.</div>
   </section>
   <main id="dashboard" class="hidden">
     <header><div><h1>AstroImageNow</h1><div class="sub" id="headerSub">—</div></div><div class="top-actions"><select class="quick-location hidden" id="quickLocationSelect" aria-label="Active observing location"></select><button class="btn" id="refreshBtn">Refresh</button><button class="btn" id="settingsBtn">Settings</button></div></header>
