@@ -1,4 +1,4 @@
-const CACHE="astro-image-now-v1.8-profiles-1";
+const CACHE="astro-image-now-v1.9-planning-1";
 const FILES=["./","./index.html","./app.js","./manifest.webmanifest","./icon.svg","./icon-180.png","./icon-192.png","./icon-512.png"];
 
 self.addEventListener("install",event=>{

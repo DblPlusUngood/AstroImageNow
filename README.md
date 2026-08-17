@@ -28,6 +28,9 @@ For a true Home Screen / standalone app experience, serve this folder over HTTPS
 - Hour-by-hour condition bands
 - Explainable component scores
 - API credit display
+- Compact current temperature, selected-night low, precipitation, visibility, fog/storm, and gust context from Open-Meteo
+- Educational condition explanations behind small information buttons
+- Target-aware filter guidance and concise preparation reminders
 
 ## Scoring philosophy
 
@@ -36,6 +39,8 @@ This is an app-derived astrophotography assessment, not an official Astrospheric
 ## Security
 
 This build is intended for private personal devices. For public/shared hosting, do not use browser storage for the API key; move API calls behind a server-side proxy and keep the key as a server secret.
+
+The browser sends the selected latitude and longitude to Astrospheric for the astronomy forecast and to Open-Meteo for supplemental weather. The weather request contains no Astrospheric API key. Weather data is provided by [Open-Meteo](https://open-meteo.com/) under its published attribution terms.
 
 
 ## v1.3 — API response parser corrected
@@ -82,7 +87,7 @@ the actual API response shape and merges optional variable calls by
 - Advances the service-worker cache so installed copies receive the corrected layout.
 - Makes no changes to forecast retrieval, night selection, or scoring.
 
-## v1.8 — Multi-night planning (draft)
+## v1.8 — Multi-night planning
 
 - Finalizes the app name as **AstroImageNow** without a question mark.
 - Requests up to 168 forecast hours and displays every upcoming night currently available from Astrospheric, up to seven nights.
@@ -93,3 +98,13 @@ the actual API response shape and merges optional variable calls by
 - Stores a separate Yellow (48+), Lime (65+), or Green (80+) alert threshold for each location.
 - Displays each location's **Bortle class** as neutral reference information, without an "estimated" qualifier or forecast-status coloring.
 - Establishes the local data needed for later push notifications, travel comparisons, and target/filter guidance.
+
+## v1.9 — Practical session planning
+
+- Preserves all v1.8 forecast scoring weights, thresholds, hard limiters, and night-selection behavior.
+- Adds a compact weather strip with current temperature, selected-night low, precipitation probability, and meaningful fog, storm, visibility, or gust warnings.
+- Keeps general-weather visibility secondary to Astrospheric transparency and shows it mainly as supporting diagnostic context.
+- Adds focused information dialogs for Cloud, Transparency, Seeing, Wind, Moon, Dew margin, Bortle class, and visibility.
+- Adds a session target selector with generic filter guidance for emission, broadband, reflection/dust, and equipment-test plans.
+- Adds concise clothing, dew-control, precipitation, visibility, and wind preparation reminders.
+- Keeps Bortle as neutral per-location metadata. Astrospheric's documented v2 forecast variables do not include Bortle, and v1.9 does not depend on an undocumented light-pollution service.

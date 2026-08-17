@@ -1,18 +1,60 @@
 "use strict";
 
 const API_BASE="https://v2-api-public.astrospheric.com/api";
+const WEATHER_API_BASE="https://api.open-meteo.com/v1/forecast";
 const SETTINGS_KEY="astroImageNowSettings";
 const LEGACY_SETTINGS_KEY="astroTonightSettings";
-const COLORS={green:"#22c55e",lime:"#84cc16",yellow:"#eab308",orange:"#f97316",red:"#ef4444"};
+const COLORS={green:"#22c55e",lime:"#84cc16",yellow:"#eab308",orange:"#f97316",red:"#ef4444",blue:"#60a5fa"};
 const ALERT_THRESHOLDS=[
   {id:"yellow",label:"Yellow",score:48,color:COLORS.yellow},
   {id:"lime",label:"Lime",score:65,color:COLORS.lime},
   {id:"green",label:"Green",score:80,color:COLORS.green}
 ];
+const TARGET_TYPES=["emission","broadband","reflection","other"];
+const INFO_CONTENT={
+  cloud:{
+    title:"Cloud cover",
+    body:"The modeled percentage of sky covered by cloud. Lower is better. Thin cloud can still reduce contrast even when the percentage looks modest."
+  },
+  transparency:{
+    title:"Transparency",
+    body:"Transparency is atmospheric clarity: how much clean target light reaches the camera. Moisture, thin cirrus, smoke, dust, haze, and pollution can reduce contrast and brighten the background.",
+    extra:"Transparency and seeing are independent. A sky can be clear but turbulent, or steady but hazy."
+  },
+  seeing:{
+    title:"Seeing",
+    body:"Seeing is atmospheric steadiness. Turbulent air bends starlight moment to moment, making stars and fine detail softer even when focus and guiding are good.",
+    extra:"At your wide-field focal length, moderate seeing is usually less limiting than cloud or poor transparency."
+  },
+  wind:{
+    title:"Wind",
+    body:"Astrospheric wind is used in the imaging score because sustained wind can disturb tracking and shake the rig. The weather strip separately watches forecast gusts, which can be higher."
+  },
+  bortle:{
+    title:"Bortle class",
+    body:"Bortle is a 1-to-9 description of a location's typical night-sky brightness, from very dark to heavily light polluted. It is useful site context, not a changing weather condition.",
+    extra:"The value is always approximate and can vary locally with nearby lights, direction, season, snow, and development."
+  },
+  moon:{
+    title:"Moon context",
+    body:"A bright Moon above the horizon raises the sky background and can reduce broadband contrast. Its effect depends on illumination, altitude, target separation, and filter choice."
+  },
+  dew:{
+    title:"Dew margin",
+    body:"Dew margin is air temperature minus dew point. A small margin means surfaces can reach the dew point easily, so heaters and shields should be operating before moisture forms."
+  },
+  visibility:{
+    title:"Visibility and weather watch",
+    body:"General-weather visibility can reveal surface fog, haze, moisture, smoke, or aerosols. It supports the transparency forecast but does not replace it because upper-atmosphere problems may not reduce surface visibility.",
+    extra:"This strip also watches precipitation, thunderstorms, fog codes, and wind gusts without changing the app's astronomy score."
+  }
+};
 const $=id=>document.getElementById(id);
 const state={
   settings:null,
   forecast:null,
+  weather:null,
+  weatherError:"",
   moons:[],
   sun:null,
   selectedNightIndex:0,
@@ -33,6 +75,10 @@ function normalizeBortle(value){
 
 function normalizeAlertThreshold(value){
   return ALERT_THRESHOLDS.some(threshold=>threshold.id===value)?value:"yellow";
+}
+
+function normalizeTargetType(value){
+  return TARGET_TYPES.includes(value)?value:"emission";
 }
 
 function normalizeLocation(location,idFallback=createLocationId()){
@@ -63,8 +109,9 @@ function normalizeSettings(raw){
   const requestedActive=String(raw.activeLocationId||locations[0].id);
   const activeLocationId=locations.some(location=>location.id===requestedActive)?requestedActive:locations[0].id;
   return{
-    version:2,
+    version:3,
     apiKey:String(raw.apiKey||""),
+    targetType:normalizeTargetType(raw.targetType),
     activeLocationId,
     locations
   };
@@ -218,6 +265,137 @@ async function api(endpoint,body){
   if(!response.ok)throw new Error(data.ErrorInfo||`Astrospheric returned HTTP ${response.status}`);
   if(data.ErrorInfo)throw new Error(data.ErrorInfo);
   return data;
+}
+
+async function fetchSupplementalWeather(location){
+  const params=new URLSearchParams({
+    latitude:String(location.lat),
+    longitude:String(location.lon),
+    current:"temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,precipitation,visibility,wind_gusts_10m",
+    hourly:"temperature_2m,relative_humidity_2m,precipitation_probability,precipitation,weather_code,visibility,wind_gusts_10m",
+    temperature_unit:"fahrenheit",
+    wind_speed_unit:"mph",
+    precipitation_unit:"inch",
+    timezone:"GMT",
+    forecast_days:"8"
+  });
+  const response=await fetch(`${WEATHER_API_BASE}?${params}`);
+  let data={};
+  try{data=await response.json()}catch{}
+  if(!response.ok)throw new Error(data.reason||`Open-Meteo returned HTTP ${response.status}`);
+  return data;
+}
+
+function weatherTimeMs(value){
+  if(!value)return NaN;
+  const normalized=/Z$|[+-]\d\d:\d\d$/.test(value)?value:`${value}Z`;
+  return Date.parse(normalized);
+}
+
+function finiteValues(values){
+  return values.filter(value=>value!==null&&value!==undefined&&value!=="").map(Number).filter(Number.isFinite);
+}
+
+function visibilityToMiles(value,unit="m"){
+  const numeric=Number(value);
+  if(!Number.isFinite(numeric))return null;
+  const normalized=String(unit).toLowerCase();
+  if(normalized==="ft"||normalized.includes("feet"))return numeric/5280;
+  if(normalized==="km")return numeric/1.609344;
+  if(normalized==="mi")return numeric;
+  return numeric/1609.344;
+}
+
+function weatherSummaryForRows(rows,weather=state.weather){
+  if(!weather||!Array.isArray(weather.hourly?.time)||!rows?.length)return null;
+  const start=Date.parse(rows[0].UTCForecastHour)-31*60*1000;
+  const end=Date.parse(rows[rows.length-1].UTCForecastHour)+31*60*1000;
+  const visibilityUnit=weather.hourly_units?.visibility||"m";
+  const entries=weather.hourly.time.map((time,index)=>{
+    const visibility=weather.hourly.visibility?.[index];
+    return{
+      time,
+      timeMs:weatherTimeMs(time),
+      temperature:Number(weather.hourly.temperature_2m?.[index]),
+      rainProbability:Number(weather.hourly.precipitation_probability?.[index]),
+      precipitation:Number(weather.hourly.precipitation?.[index]),
+      code:Number(weather.hourly.weather_code?.[index]),
+      visibility:Number(visibility),
+      visibilityMiles:visibilityToMiles(visibility,visibilityUnit),
+      gust:Number(weather.hourly.wind_gusts_10m?.[index])
+    };
+  }).filter(entry=>entry.timeMs>=start&&entry.timeMs<=end);
+  if(!entries.length)return null;
+
+  const temperatures=finiteValues(entries.map(entry=>entry.temperature));
+  const rainProbabilities=finiteValues(entries.map(entry=>entry.rainProbability));
+  const precipitation=finiteValues(entries.map(entry=>entry.precipitation));
+  const visibilityMilesValues=finiteValues(entries.map(entry=>entry.visibilityMiles));
+  const gusts=finiteValues(entries.map(entry=>entry.gust));
+  const low=temperatures.length?Math.min(...temperatures):null;
+  const rain=rainProbabilities.length?Math.max(...rainProbabilities):null;
+  const rainAmount=precipitation.length?precipitation.reduce((sum,value)=>sum+value,0):null;
+  const visibilityMiles=visibilityMilesValues.length?Math.min(...visibilityMilesValues):null;
+  const gust=gusts.length?Math.max(...gusts):null;
+  const stormEntry=entries.find(entry=>entry.code>=95);
+  const fogEntry=entries.find(entry=>entry.code===45||entry.code===48);
+  const rainEntry=entries.find(entry=>entry.rainProbability>=50||entry.precipitation>=0.03);
+  const visibilityEntry=entries.find(entry=>entry.visibilityMiles!==null&&entry.visibilityMiles<6);
+  const gustEntry=entries.find(entry=>entry.gust>=18);
+
+  let watch="No major hazard";
+  let watchTime=null;
+  let severity="clear";
+  if(stormEntry){watch="Storm risk";watchTime=stormEntry.time;severity="danger"}
+  else if(fogEntry||visibilityMiles!==null&&visibilityMiles<3){watch="Fog / low visibility";watchTime=(fogEntry||visibilityEntry)?.time||null;severity="danger"}
+  else if(rain!==null&&rain>=50||rainAmount!==null&&rainAmount>=0.05){watch="Rain likely";watchTime=rainEntry?.time||null;severity="danger"}
+  else if(gust!==null&&gust>=25){watch="Strong gusts";watchTime=gustEntry?.time||null;severity="danger"}
+  else if(rain!==null&&rain>=25){watch="Rain possible";watchTime=rainEntry?.time||null;severity="watch"}
+  else if(visibilityMiles!==null&&visibilityMiles<6){watch="Haze / fog possible";watchTime=visibilityEntry?.time||null;severity="watch"}
+  else if(gust!==null&&gust>=18){watch="Gusty";watchTime=gustEntry?.time||null;severity="watch"}
+
+  return{
+    entries,
+    currentTemperature:Number.isFinite(Number(weather.current?.temperature_2m))?Number(weather.current.temperature_2m):null,
+    currentApparent:Number.isFinite(Number(weather.current?.apparent_temperature))?Number(weather.current.apparent_temperature):null,
+    low,
+    rain,
+    rainAmount,
+    visibilityMiles,
+    gust,
+    watch,
+    watchTime,
+    severity
+  };
+}
+
+function filterRecommendation({targetType,bortle,moon,transparency,weather}){
+  const target=normalizeTargetType(targetType);
+  const illumination=Number(moon?.IlluminationPercent||0);
+  const brightMoon=Boolean(moon?.IsAboveHorizon)&&illumination>=35;
+  const brightSite=Number.isFinite(Number(bortle))&&Number(bortle)>=5;
+  const reducedClarity=Number(transparency)<48||weather?.visibilityMiles!==null&&weather?.visibilityMiles<6;
+
+  if(target==="emission"){
+    if(reducedClarity)return{title:"Dual-band optional",reason:"It can improve emission contrast, but haze or poor transparency still removes target signal."};
+    if(brightMoon||brightSite)return{title:"Dual-band useful",reason:brightMoon?"An illuminated Moon is above the horizon during this night.":`Bortle ${bortle} sky glow favors narrow emission bands.`};
+    return{title:"No filter required",reason:"Dark-site and Moon conditions do not demand a contrast filter for this emission target."};
+  }
+  if(target==="broadband")return{title:"UV/IR cut or none",reason:"Keep the broad spectrum for galaxies and clusters; a dual-band filter would discard useful signal and color."};
+  if(target==="reflection")return{title:"UV/IR cut or none",reason:"Reflection nebulae and dust are broadband targets, so preserve their continuum light."};
+  return{title:"Use the test plan",reason:"Choose the filter required by the equipment or comparison you intend to run."};
+}
+
+function preparationGuidance(weather,components){
+  const guidance=[];
+  if(weather?.severity==="danger")guidance.push(weather.watch);
+  if(weather?.low!==null&&weather?.low<40)guidance.push(`Cold-weather layers for ${Math.round(weather.low)}°F`);
+  else if(weather?.low!==null&&weather?.low<55)guidance.push(`Bring a layer for ${Math.round(weather.low)}°F`);
+  if(components.dew<65)guidance.push("Dew control from setup");
+  if(weather?.severity==="watch"&&!guidance.includes(weather.watch))guidance.push(weather.watch);
+  if(weather?.gust!==null&&weather?.gust>=18&&!guidance.some(item=>item.includes("gust")))guidance.push(`Plan for ${Math.round(weather.gust)} mph gusts`);
+  if(!guidance.length)guidance.push("No unusual preparation beyond the standard setup");
+  return guidance.slice(0,3);
 }
 
 function hourlyRows(){
@@ -439,6 +617,56 @@ function renderQuickLocationSelect(){
   select.classList.toggle("hidden",locations.length<2);
 }
 
+function renderWeatherAndPlan(rows,timeZone,components,moon){
+  const weather=weatherSummaryForRows(rows);
+  const targetType=normalizeTargetType(state.settings?.targetType);
+  const location=activeLocation();
+  $("targetSelect").value=targetType;
+
+  if(weather){
+    $("weatherNow").textContent=weather.currentTemperature===null?"—":`${Math.round(weather.currentTemperature)}°F`;
+    $("weatherLow").textContent=weather.low===null?"—":`${Math.round(weather.low)}°F`;
+    $("weatherRain").textContent=weather.rain===null?"—":`${Math.round(weather.rain)}%`;
+    const watchTime=weather.watchTime?fmtTime(new Date(weatherTimeMs(weather.watchTime)).toISOString(),timeZone):"";
+    $("weatherWatch").textContent=`${weather.watch}${watchTime?` · ${watchTime}`:""}`;
+    const watchColor=weather.severity==="danger"?COLORS.red:weather.severity==="watch"?COLORS.yellow:COLORS.green;
+    $("weatherWatch").style.color=watchColor;
+    $("weatherStrip").style.borderLeft=`4px solid ${watchColor}`;
+
+    const diagnostic=[];
+    if(weather.visibilityMiles!==null)diagnostic.push(`Visibility ${weather.visibilityMiles.toFixed(weather.visibilityMiles<10?1:0)} mi`);
+    if(weather.gust!==null)diagnostic.push(`Gusts to ${Math.round(weather.gust)} mph`);
+    if(components.transparency<48&&weather.visibilityMiles!==null){
+      diagnostic.push(weather.visibilityMiles<6
+        ?"Reduced surface visibility may be contributing to poor transparency"
+        :"Surface visibility looks normal; elevated haze, moisture, or the astronomy model may explain poor transparency");
+    }
+    $("weatherNote").innerHTML=`${diagnostic.join(" · ")}${diagnostic.length?" · ":""}<a href="https://open-meteo.com/" target="_blank" rel="noopener">Weather data by Open-Meteo</a>`;
+  }else{
+    $("weatherNow").textContent="—";
+    $("weatherLow").textContent="—";
+    $("weatherRain").textContent="—";
+    $("weatherWatch").textContent="Unavailable";
+    $("weatherWatch").style.color="var(--muted)";
+    $("weatherStrip").style.borderLeft="1px solid var(--line)";
+    $("weatherNote").textContent=state.weatherError
+      ?"Supplemental weather is temporarily unavailable. The Astrospheric score is unaffected."
+      :"No supplemental weather overlaps this selected night. The Astrospheric score is unaffected.";
+  }
+
+  const filter=filterRecommendation({
+    targetType,
+    bortle:location?.bortle,
+    moon,
+    transparency:components.transparency,
+    weather
+  });
+  $("planCard").style.borderLeft=`4px solid ${COLORS.blue||"#60a5fa"}`;
+  $("filterValue").textContent=filter.title;
+  $("filterReason").textContent=filter.reason;
+  $("prepareLine").textContent=`Prepare: ${preparationGuidance(weather,components).join(" · ")}`;
+}
+
 function render(){
   const forecast=state.forecast;
   const location=activeLocation();
@@ -504,13 +732,13 @@ function render(){
   const seeingValue=seriesValue("Seeing",center);
   const windValue=windToMph(seriesValue("Wind",center));
   const metricData=[
-    ["Cloud",`${Math.round(cloudValue)}%`,components.cloud],
-    ["Transparency",transparencyValue==null?"—":`${Number(transparencyValue).toFixed(0)}`,components.transparency],
-    ["Seeing",`${Number(seeingValue).toFixed(0)} / 5`,components.seeing],
-    ["Wind",windValue==null?"—":`${windValue.toFixed(1)} mph`,components.wind]
+    ["Cloud",`${Math.round(cloudValue)}%`,components.cloud,"cloud"],
+    ["Transparency",transparencyValue==null?"—":`${Number(transparencyValue).toFixed(0)}`,components.transparency,"transparency"],
+    ["Seeing",`${Number(seeingValue).toFixed(0)} / 5`,components.seeing,"seeing"],
+    ["Wind",windValue==null?"—":`${windValue.toFixed(1)} mph`,components.wind,"wind"]
   ];
-  $("metricGrid").innerHTML=metricData.map(([name,value,score])=>
-    `<div class="card metric" style="--status:${colorForScore(score)}"><div class="label">${name}</div><div class="metric-value">${value}</div><div class="metric-status">${conditionText(score>=48?"GO":"CAUTION",score)}</div></div>`
+  $("metricGrid").innerHTML=metricData.map(([name,value,score,info])=>
+    `<div class="card metric" style="--status:${colorForScore(score)}"><div class="label label-row"><span>${name}</span><button class="info-button" type="button" data-info="${info}" aria-label="About ${name}">i</button></div><div class="metric-value">${value}</div><div class="metric-status">${conditionText(score>=48?"GO":"CAUTION",score)}</div></div>`
   ).join("");
 
   renderOutlook(nights,timeZone);
@@ -547,14 +775,7 @@ function render(){
   $("dewStatus").style.color=colorForScore(components.dew);
   $("dewStatus").textContent=conditionText(components.dew>=65?"GO":"WATCH",components.dew);
   $("dewDetail").textContent=components.dew<65?"Run dew control from setup.":"Comfortable margin at the best imaging window.";
-
-  $("adviceCard").style.borderLeft=`4px solid ${status}`;
-  $("adviceTitle").textContent=verdict==="GO"?"Worth setting up":verdict==="MARGINAL"?"Use a shorter plan":"Protect the evening";
-  $("adviceText").textContent=verdict==="GO"
-    ?"Weather should not be the main limiting factor. Use dew control from the start and treat this as a good opportunity to operate the rig."
-    :verdict==="MARGINAL"
-      ?"If setup time is low, a focused test or shorter imaging run can still be worthwhile. Avoid turning the night into a troubleshooting marathon."
-      :"Skip the full imaging deployment unless you specifically want a bench/setup test.";
+  renderWeatherAndPlan(rows,timeZone,components,moon);
 
   const detailEntries=[
     ["Cloud",components.cloud],
@@ -593,11 +814,18 @@ async function refresh(){
   $("diagWrap").classList.add("hidden");
   $("diagBox").classList.add("hidden");
   state.diagnostic="";
+  state.weather=null;
+  state.weatherError="";
   try{
     const location=activeLocation();
     if(!location)throw new Error("Select a valid observing location.");
     const common={Latitude:location.lat,Longitude:location.lon};
     const forecastOptions={...common,ForecastLength:168,PrettyPrint:true};
+    const weatherPromise=fetchSupplementalWeather(location).catch(error=>{
+      state.weatherError=error.message;
+      state.diagnostic+=`\n\nSUPPLEMENTAL WEATHER ERROR\n${error.message}`;
+      return null;
+    });
     const core=await api("GetForecastData",{
       ...forecastOptions,
       Variables:["Cloud","Seeing","Temperature"]
@@ -618,11 +846,12 @@ async function refresh(){
       ...(extraByTime.get(row.UTCForecastHour)||{})
     }));
     state.forecast={...core,...extra,HourlyForecast:mergedHourly};
+    state.weather=await weatherPromise;
     state.selectedNightIndex=0;
 
     state.moons=await fetchNightMoons(common);
     state.sun=await api("RiseSet",{...common,Object:"Sun",Days:7});
-    state.diagnostic+="\n\nNIGHT MOON RESPONSES\n"+JSON.stringify(state.moons,null,2)+"\n\nSUN RESPONSE\n"+JSON.stringify(state.sun,null,2);
+    state.diagnostic+="\n\nNIGHT MOON RESPONSES\n"+JSON.stringify(state.moons,null,2)+"\n\nSUN RESPONSE\n"+JSON.stringify(state.sun,null,2)+"\n\nSUPPLEMENTAL WEATHER RESPONSE\n"+JSON.stringify(state.weather,null,2);
     render();
   }catch(error){
     $("errorBox").textContent=error.message;
@@ -683,6 +912,22 @@ function selectLocationForEditing(locationId){
   fillLocationForm(location);
 }
 
+function openInfo(key){
+  const content=INFO_CONTENT[key];
+  if(!content)return;
+  $("infoTitle").textContent=content.title;
+  $("infoBody").innerHTML=`<p>${content.body}</p>${content.extra?`<p>${content.extra}</p>`:""}`;
+  const dialog=$("infoDialog");
+  if(typeof dialog.showModal==="function")dialog.showModal();
+  else dialog.setAttribute("open","");
+}
+
+function closeInfo(){
+  const dialog=$("infoDialog");
+  if(typeof dialog.close==="function")dialog.close();
+  else dialog.removeAttribute("open");
+}
+
 function showSetup(){
   $("dashboard").classList.add("hidden");
   $("setupView").classList.remove("hidden");
@@ -737,8 +982,9 @@ function initialize(){
     if(existingIndex>=0)locations[existingIndex]=location;
     else locations.push(location);
     saveSettings({
-      version:2,
+      version:3,
       apiKey,
+      targetType:state.settings?.targetType||"emission",
       activeLocationId:location.id,
       locations
     });
@@ -771,6 +1017,21 @@ function initialize(){
   });
 
   $("alertThreshold").addEventListener("input",updateThresholdControl);
+
+  $("targetSelect").addEventListener("change",event=>{
+    if(!state.settings)return;
+    saveSettings({...state.settings,targetType:normalizeTargetType(event.target.value)});
+    render();
+  });
+
+  document.addEventListener("click",event=>{
+    const infoButton=event.target.closest("[data-info]");
+    if(infoButton)openInfo(infoButton.dataset.info);
+  });
+  $("infoClose").addEventListener("click",closeInfo);
+  $("infoDialog").addEventListener("click",event=>{
+    if(event.target===$("infoDialog"))closeInfo();
+  });
 
   $("cancelSetup").addEventListener("click",()=>{
     if(!state.settings)return;
@@ -879,8 +1140,10 @@ if(typeof module!=="undefined"){
   module.exports={
     state,
     ALERT_THRESHOLDS,
+    TARGET_TYPES,
     normalizeBortle,
     normalizeAlertThreshold,
+    normalizeTargetType,
     normalizeLocation,
     normalizeSettings,
     activeLocation,
@@ -901,6 +1164,11 @@ if(typeof module!=="undefined"){
     hourlyScoresForRow,
     overallForRow,
     findBestWindowForRows,
-    summaryForNight
+    summaryForNight,
+    weatherTimeMs,
+    visibilityToMiles,
+    weatherSummaryForRows,
+    filterRecommendation,
+    preparationGuidance
   };
 }
