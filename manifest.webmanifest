@@ -1,6 +1,6 @@
 {
-  "name": "AstroImageNow?",
-  "short_name": "AstroImageNow?",
+  "name": "AstroImageNow",
+  "short_name": "AstroImageNow",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#07101e",

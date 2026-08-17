@@ -1,4 +1,4 @@
-# AstroImageNow?
+# AstroImageNow
 
 A polished personal dashboard using the official Astrospheric Data API v2.
 
@@ -81,3 +81,15 @@ the actual API response shape and merges optional variable calls by
 - Locks the score ring to a true circle even when the mobile layout is compressed.
 - Advances the service-worker cache so installed copies receive the corrected layout.
 - Makes no changes to forecast retrieval, night selection, or scoring.
+
+## v1.8 — Multi-night planning (draft)
+
+- Finalizes the app name as **AstroImageNow** without a question mark.
+- Requests up to 168 forecast hours and displays every upcoming night currently available from Astrospheric, up to seven nights.
+- Adds a compact, selectable night outlook; selecting a future night updates the existing detailed score, best window, metrics, timeline, Moon, dew, and recommendation views.
+- Uses the existing v1.7 forecast scoring weights, thresholds, and hard limiters without modification.
+- Migrates the existing single location into a saved-location profile automatically.
+- Adds multiple saved locations with a fast dashboard location switcher.
+- Stores a separate Yellow (48+), Lime (65+), or Green (80+) alert threshold for each location.
+- Displays each location's **Bortle class** as neutral reference information, without an "estimated" qualifier or forecast-status coloring.
+- Establishes the local data needed for later push notifications, travel comparisons, and target/filter guidance.
