@@ -121,3 +121,17 @@ test("fresh refresh keeps the selected calendar night",async t=>{
   assert.equal(app.state.selectedNightIndex,2);
   assert.equal(app.nightKey(app.darkRows(),"America/New_York"),selected);
 });
+
+test("target planning keeps absent, stale, hazardous and incomplete weather explicit",async t=>{
+  setup(t);await app.refresh();
+  const nights=app.availableNights(),zone='America/New_York',date=app.nightKey(nights[0],zone);
+  assert.match(app.targetPlanningWeather(nights,'2099-01-01',zone).message,/Geometry only/);
+  assert.match(app.targetPlanningWeather(nights,date,zone).message,/Night forecast/);
+  app.state.weather.hourly.precipitation_probability.fill(90);
+  assert.equal(app.targetPlanningWeather(nights,date,zone).severity,'danger');
+  assert.match(app.targetPlanningWeather(nights,date,zone).message,/Weather blocks setup/);
+  app.state.weatherStale=true;
+  assert.match(app.targetPlanningWeather(nights,date,zone).message,/stale/);
+  app.state.weatherStale=false;app.state.weather=null;
+  assert.match(app.targetPlanningWeather(nights,date,zone).message,/not fully assessed/);
+});

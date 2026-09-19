@@ -34,6 +34,7 @@ For a true Home Screen / standalone app experience, serve this folder over HTTPS
 - Compact current temperature, selected-night low, precipitation, visibility, fog/storm, gust, and air-quality context
 - Educational condition explanations behind small information buttons
 - Target-aware filter guidance and concise preparation reminders
+- A searchable 31-object deep-sky catalog with target/date/site planning, Moon geometry, Z73 framing, and local saved assignments
 
 ## Scoring philosophy
 
@@ -45,6 +46,20 @@ This build is intended for private personal devices. For public/shared hosting, 
 
 The browser sends the exact selected coordinates to Astrospheric for the astronomy forecast. Supplemental weather requests use coordinates rounded to two decimal places. The Astrospheric key is sent only to Astrospheric; the Foreca token is sent only to Foreca. Weather data is provided by [Foreca](https://www.foreca.com/) or [Open-Meteo](https://open-meteo.com/), according to the selected source. Open-Meteo air-quality data incorporates Copernicus Atmosphere Monitoring Service (CAMS) forecasts.
 
+
+## v1.11 — Target, date and site planning
+
+Tap **Plan targets** near the top, or scroll to **What could I image?** The planner follows the selected forecast night and observing site. Choose a different date to explore another season; **Follow selected night** reconnects it to the forecast cards.
+
+- Searches 31 curated deep-sky targets by common name or catalog designation. The versioned [OpenNGC seed and method notes](data/README.md) include licenses, source provenance, explicit J2000 coordinate units, and catalog-size limitations.
+- Calculates altitude, darkness and Moon geometry locally at 10-minute intervals, with daylight-saving-aware local nights. Astronomy Engine is bundled for offline use and also supplies the dashboard's solar geometry.
+- Shows a useful window, highest altitude in darkness, target/Moon altitude chart, illumination and nearest separation while the Moon is up. Windows can favor a later Moon-free interval. These remain geometric windows; the separate night-level weather warning still governs setup.
+- Uses the nominal Z73/Flat73A/ASI533MC Pro field: **1.51° × 1.51°**, about **1.80″/pixel**. Oversized targets, tiny targets and uncertain nebula complexes receive explicit framing cautions. Full M31 and M45 require cropping or a mosaic with this combination.
+- Offers the confirmed owned L-Pro or an unfiltered baseline. The rig reflects the installed Elite Drawer OAG and still-unverified optical spacing. Bortle remains site context, not a nightly measurement. The C8's lunar/planetary use is reserved for a separate planner.
+- Saves target/date/site/rig/filter/altitude assignments locally. There is no cross-device synchronization, automatic telescope command, or calendar write. Planner state uses a separate storage key and preserves forecast credentials and site profiles.
+- Geometry works beyond the weather horizon and after the updated app shell has been cached offline. Weather absence, incomplete data and stale saved forecasts remain explicit.
+
+See the [v1.11 release record](docs/releases/2026-09-19-v1.11-target-planning.md) for validation and the bounded next increment.
 
 ## v1.10 — Foreca and forecast reliability
 
@@ -67,11 +82,15 @@ Requires Node.js 22 or later; no dependency installation is needed.
 node --test tests/*.test.js
 node --check app.js
 node --check providers.js
+node --check planner.js
+node --check planner-ui.js
 node --check sw.js
 node tests/visual-server.js
 ```
 
 Open `http://127.0.0.1:4173/visual-test` for synthetic provider data. The fixture uses dummy credentials and overwrites settings **only on that localhost origin**. Service-worker registration is stubbed in the fixture; service-worker behavior is separately covered by tests. Open `/` for a normal local installation with its own settings.
+
+The current suite has 50 tests. Rebuilding the catalog additionally requires Python 3 (`python3 scripts/build-catalog.py`); normal app use and Node tests do not.
 
 ### Installed-app update
 
