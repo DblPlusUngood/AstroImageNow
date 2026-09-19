@@ -6,7 +6,7 @@ const vm=require("node:vm");
 function worker(){
   const handlers={},deleted=[],cached=[];
   let skipped=false;
-  const context={URL,Set,Promise,self:{location:"https://example.test/AstroImageNow/sw.js",addEventListener:(name,handler)=>handlers[name]=handler,skipWaiting:()=>{skipped=true}},caches:{open:async()=>({addAll:async files=>cached.push(...files),match:async()=>"cached shell"}),keys:async()=>["astro-image-now-v1.9-release-1","astro-image-now-v1.10.0","unrelated-project"],delete:async key=>deleted.push(key)},fetch:async()=>"network"};
+  const context={URL,Set,Promise,self:{location:"https://example.test/AstroImageNow/sw.js",addEventListener:(name,handler)=>handlers[name]=handler,skipWaiting:()=>{skipped=true}},caches:{open:async()=>({addAll:async files=>cached.push(...files),match:async()=>"cached shell"}),keys:async()=>["astro-image-now-v1.9-release-1","astro-image-now-v1.10.0","astro-image-now-v1.11.0","unrelated-project"],delete:async key=>deleted.push(key)},fetch:async()=>"network"};
   vm.runInNewContext(fs.readFileSync(require.resolve("../sw.js"),"utf8"),context);
   return{handlers,deleted,cached,get skipped(){return skipped}};
 }
@@ -15,8 +15,14 @@ test("service worker installs the provider script and deletes only obsolete app 
   w.handlers.install({waitUntil:p=>pending=p});await pending;
   assert.ok(w.cached.includes("./providers.js"));assert.equal(w.skipped,false);
   w.handlers.activate({waitUntil:p=>pending=p});await pending;
-  assert.deepEqual(w.deleted,["astro-image-now-v1.9-release-1"]);
+  assert.deepEqual(w.deleted,["astro-image-now-v1.9-release-1","astro-image-now-v1.10.0"]);
   w.handlers.message({data:{type:"APPLY_UPDATE"}});assert.equal(w.skipped,true);
+});
+test("offline shell includes all planning dependencies and each cached asset exists",async()=>{
+  const w=worker();let pending;
+  w.handlers.install({waitUntil:p=>pending=p});await pending;
+  for(const asset of ['planner.js','planner-ui.js','equipment.js','data/targets.js','vendor/astronomy.browser.min.js'])assert.ok(w.cached.includes('./'+asset));
+  for(const asset of w.cached)assert.ok(fs.existsSync(require('node:path').resolve(__dirname,'..',asset)),asset);
 });
 test("service worker intercepts only its own shell, never authenticated or other-site requests",async()=>{
   const w=worker();let response;

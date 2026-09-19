@@ -1,0 +1,32 @@
+Name;Type;RA;Dec;Const;MajAx;MinAx;PosAng;V-Mag;SurfBr;M;Common names;Sources
+NGC0224;G;00:42:44.35;+41:16:08.6;And;177.83;69.66;35;3.44;23.63;031;Andromeda Galaxy;Type:1|RA:1|Dec:1|Const:99|MajAx:3|MinAx:3|PosAng:3|B-Mag:3|V-Mag:2|J-Mag:2|H-Mag:2|K-Mag:2|SurfBr:3|Hubble:3|Pax:2|RadVel:2|Redshift:2
+NGC0598;G;01:33:50.89;+30:39:36.8;Tri;62.09;36.73;23;5.79;23.61;033;Triangulum Galaxy,Triangulum Pinwheel;Type:1|RA:1|Dec:1|Const:99|MajAx:3|MinAx:3|PosAng:3|B-Mag:3|V-Mag:3|J-Mag:2|H-Mag:2|K-Mag:2|SurfBr:3|Hubble:3|RadVel:2|Redshift:2
+Mel022;OCl;03:47:28.6;+24:06:19;Tau;150.00;150.00;90;1.20;;045;Pleiades;Type:2|RA:2|Dec:2|Const:99|MajAx:5|V-Mag:10|Pax:2|Pm-RA:2|Pm-Dec:2|RadVel:2|Redshift:2
+NGC7000;HII;20:59:17.14;+44:31:43.6;Cyg;120.00;30.00;;;;;North America Nebula;Type:1|RA:1|Dec:1|Const:99|MajAx:9|MinAx:9|B-Mag:3
+IC5070;HII;20:51:00.72;+44:24:05.4;Cyg;60.00;50.00;;;;;Pelican Nebula;Type:1|RA:1|Dec:1|Const:99|MajAx:9|MinAx:9|B-Mag:3
+NGC6992;SNR;20:56:19.07;+31:44:33.9;Cyg;60.00;8.00;;;;;Eastern Veil,Network Nebula;Type:1|RA:1|Dec:1|Const:99|MajAx:3|MinAx:3|B-Mag:3
+NGC6960;SNR;20:45:58.18;+30:35:42.5;Cyg;210.00;160.00;;;;;Veil Nebula,Filamentary Nebula,Western Veil;Type:1|RA:1|Dec:1|Const:99|MajAx:9|MinAx:9|B-Mag:3
+NGC6888;HII;20:12:06.55;+38:21:17.8;Cyg;20.00;10.00;;;;;Crescent Nebula;Type:1|RA:1|Dec:1|Const:99|MajAx:9|MinAx:9|B-Mag:2
+NGC7635;HII;23:20:45.60;+61:12:44.5;Cas;15.00;8.00;;;;;Bubble Nebula;Type:1|RA:1|Dec:1|Const:99|MajAx:9|MinAx:9|B-Mag:3
+NGC0281;HII;00:52:59.35;+56:37:18.8;Cas;35.00;30.00;;;;;;Type:1|RA:1|Dec:1|Const:99|MajAx:9|MinAx:9|RadVel:2|Redshift:2
+NGC1499;Neb;04:03:14.42;+36:22:02.9;Per;160.00;40.00;;;;;California Nebula;Type:1|RA:1|Dec:1|Const:99|MajAx:9|MinAx:9|B-Mag:3
+NGC1333;Cl+N;03:28:55.2;+31:22:12;Per;19.50;;;;;;;Type:1|RA:1|Dec:1|Const:99|MajAx:9|B-Mag:2|Pax:2|Pm-RA:2|Pm-Dec:2|RadVel:2|Redshift:2
+NGC1976;Cl+N;05:35:16.48;-05:23:22.8;Ori;90.00;60.00;;4.00;;042;Great Orion Nebula,Orion Nebula;Type:1|RA:1|Dec:1|Const:99|MajAx:9|MinAx:9|B-Mag:3|V-Mag:10|Pm-RA:2|Pm-Dec:2|RadVel:2|Redshift:2
+NGC2237;Neb;06:30:54.61;+05:02:57.0;Mon;80.00;50.00;;;;;Rosette A;Type:1|RA:1|Dec:1|Const:99|MajAx:3|MinAx:3|RadVel:2|Redshift:2
+NGC2264;Cl+N;06:40:58.25;+09:53:43.7;Mon;11.40;;;3.90;;;Christmas Tree Cluster;Type:1|RA:1|Dec:1|Const:99|MajAx:9|V-Mag:2|Pax:2|Pm-RA:2|Pm-Dec:2|RadVel:2|Redshift:2
+IC0443;SNR;06:16:37.41;+22:31:54.0;Gem;50.00;40.00;;;;;Gem A;Type:1|RA:1|Dec:1|Const:99|MajAx:9|MinAx:9|B-Mag:3
+NGC2174;Neb;06:09:23.62;+20:39:34.5;Ori;40.00;30.00;;;;;Monkey Head Nebula;Type:1|RA:1|Dec:1|Const:99|MajAx:3|MinAx:3
+NGC2024;Neb;05:41:42.57;-01:51:22.6;Ori;30.00;30.00;;;;;;Type:1|RA:1|Dec:1|Const:99|MajAx:3|MinAx:3|RadVel:2|Redshift:2
+NGC5194;G;13:29:52.71;+47:11:42.6;CVn;13.71;11.67;163;8.36;22.90;051;Whirlpool Galaxy;Type:1|RA:1|Dec:1|Const:99|MajAx:3|MinAx:3|PosAng:3|B-Mag:3|V-Mag:2|J-Mag:2|H-Mag:2|K-Mag:2|SurfBr:3|Hubble:3|Pax:2|RadVel:2|Redshift:2
+NGC3031;G;09:55:33.17;+69:03:55.1;UMa;21.63;11.25;157;6.92;22.78;081;Bode's Galaxy;Type:1|RA:1|Dec:1|Const:99|MajAx:3|MinAx:3|PosAng:3|B-Mag:3|V-Mag:3|J-Mag:2|H-Mag:2|K-Mag:2|SurfBr:3|Hubble:3|Pm-RA:2|Pm-Dec:2|RadVel:2|Redshift:2
+NGC3034;G;09:55:52.73;+69:40:45.8;UMa;10.99;5.11;66;8.30;22.22;082;Cigar Galaxy;Type:1|RA:1|Dec:1|Const:99|MajAx:3|MinAx:3|PosAng:3|B-Mag:3|V-Mag:3|J-Mag:2|H-Mag:2|K-Mag:2|SurfBr:3|Hubble:3|RadVel:2|Redshift:2
+NGC6205;GCl;16:41:41.63;+36:27:40.7;Her;16.50;;;5.80;;013;Hercules Globular Cluster;Type:1|RA:1|Dec:1|Const:99|MajAx:5|V-Mag:2|J-Mag:2|H-Mag:2|K-Mag:2|Pax:2|Pm-RA:2|Pm-Dec:2|RadVel:2|Redshift:2
+NGC0869;OCl;02:18:58.56;+57:07:02.1;Per;14.40;;;3.70;;;h Persei Cluster;Type:1|RA:1|Dec:1|Const:99|MajAx:5|B-Mag:2|V-Mag:2|Pax:2|Pm-RA:2|Pm-Dec:2|RadVel:2|Redshift:2
+NGC0884;OCl;02:22:32.10;+57:08:38.8;Per;10.50;;;3.80;;;chi Persei Cluster;Type:1|RA:1|Dec:1|Const:99|MajAx:5|B-Mag:2|V-Mag:2|Pax:2|Pm-RA:2|Pm-Dec:2|RadVel:2|Redshift:2
+NGC7293;PN;22:29:38.57;-20:50:14.4;Aqr;16.33;;;7.30;;;Helix Nebula;Type:1|RA:1|Dec:1|Const:99|MajAx:8|B-Mag:3|V-Mag:3|J-Mag:2|H-Mag:2|K-Mag:2|Pax:2|Pm-RA:2|Pm-Dec:2|RadVel:2|Redshift:2|Cstar U-Mag:8|Cstar B-Mag:8|Cstar V-Mag:8
+NGC6720;PN;18:53:35.01;+33:01:42.9;Lyr;1.27;;;8.80;;057;Ring Nebula;Type:1|RA:1|Dec:1|Const:99|MajAx:8|B-Mag:3|V-Mag:3|J-Mag:2|Pax:2|Pm-RA:2|Pm-Dec:2|RadVel:2|Redshift:2|Cstar B-Mag:8|Cstar V-Mag:8
+NGC6853;PN;19:59:36.38;+22:43:15.7;Vul;6.70;;;7.40;;027;Dumbbell Nebula;Type:1|RA:1|Dec:1|Const:99|MajAx:8|B-Mag:3|V-Mag:3|J-Mag:2|H-Mag:2|Pax:2|Pm-RA:2|Pm-Dec:2|RadVel:2|Redshift:2|Cstar U-Mag:8|Cstar B-Mag:8|Cstar V-Mag:8
+NGC7789;OCl;23:57:24.06;+56:42:29.8;Cas;14.40;;;6.70;;;;Type:1|RA:1|Dec:1|Const:99|MajAx:5|B-Mag:2|V-Mag:2|Pax:2|Pm-RA:2|Pm-Dec:2|RadVel:2|Redshift:2
+NGC0457;OCl;01:19:32.65;+58:17:26.5;Cas;7.80;;;6.40;;;Owl Cluster;Type:1|RA:1|Dec:1|Const:99|MajAx:5|B-Mag:2|V-Mag:2|Pax:2|Pm-RA:2|Pm-Dec:2|RadVel:2|Redshift:2
+NGC0891;G;02:22:33.41;+42:20:56.9;And;13.03;3.03;22;10.01;24.17;;;Type:1|RA:1|Dec:1|Const:99|MajAx:3|MinAx:3|PosAng:3|B-Mag:3|V-Mag:3|J-Mag:2|H-Mag:2|K-Mag:2|SurfBr:3|Hubble:3|RadVel:2|Redshift:2
+NGC7331;G;22:37:04.01;+34:24:55.9;Peg;9.27;3.76;170;9.41;23.08;;;Type:1|RA:1|Dec:1|Const:99|MajAx:3|MinAx:3|PosAng:3|B-Mag:3|V-Mag:3|J-Mag:2|H-Mag:2|K-Mag:2|SurfBr:3|Hubble:3|RadVel:2|Redshift:2

@@ -183,6 +183,10 @@
       .weather-item:nth-child(-n+2){border-bottom:1px solid var(--line)}
     }
   </style>
+<style>
+    .target-planner{margin-top:22px}.target-planner h2{font-size:21px;margin:0 0 5px}.planner-controls{display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px;align-items:end}.planner-date{display:flex;gap:8px;align-items:center}.planner-date input{min-width:0}.planner-date .btn{font-size:12px;flex:0 0 120px}.planner-search{display:grid;grid-template-columns:1fr 2fr;gap:10px}.target-picks{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:14px 0}.target-pick{padding:13px;border:1px solid var(--line);border-radius:12px;background:#091525;min-width:0}.target-pick strong{display:block;line-height:1.4}.target-band{display:block;margin-top:7px;color:#8ebeff;font-size:13px}.planner-detail{border-top:1px solid var(--line);padding-top:15px;margin-top:16px}.planner-detail h3{margin:0 0 6px}.planner-facts{display:grid;grid-template-columns:1fr 1fr;gap:12px}.planner-facts p{font-size:13px;line-height:1.5;margin:6px 0 0;color:#d4dfed}.planner-facts h4{font-size:13px;margin:0;color:var(--muted)}.planner-chart{max-width:100%;margin-top:10px}.planner-chart svg{width:100%;display:block}.planner-plans{list-style:none;padding:0}.planner-plans li{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:13px;margin-top:10px}.planner-plans span{overflow-wrap:anywhere}.planner-forecast[data-severity="danger"]{background:#30151f;border-color:#80404b}.planner-forecast[data-severity="unknown"]{border-color:#516075}.planner-help{font-size:12px;color:var(--muted);line-height:1.5}.planner-help a{color:#92bfff}.planner-detail .btn{margin-top:12px}.target-planner input:focus-visible,.target-planner select:focus-visible,.target-planner button:focus-visible{outline:2px solid #92bfff;outline-offset:2px}
+    @media(max-width:680px){.planner-controls,.planner-search,.target-picks,.planner-facts{grid-template-columns:1fr}.target-pick{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:10px}.target-pick strong,.target-pick .target-band,.target-pick p{grid-column:1}.target-pick .btn{grid-column:2;grid-row:1/4;align-self:center;font-size:12px;padding:8px}.planner-date .btn{flex-basis:108px}.target-planner{padding:13px}}
+  </style>
 </head>
 <body>
 <div class="app">
@@ -209,7 +213,7 @@
   </section>
   <main id="dashboard" class="hidden">
     <header><div><h1>AstroImageNow</h1><div class="sub" id="headerSub">—</div></div><div class="top-actions"><select class="quick-location hidden" id="quickLocationSelect" aria-label="Active observing location"></select><button class="btn" id="refreshBtn">Refresh</button><button class="btn" id="settingsBtn">Settings</button></div></header>
-    <div id="errorBox" class="error hidden"></div><div id="diagWrap" class="hidden"><div class="setup-actions"><button class="btn" id="diagBtn">Show diagnostics</button><button class="btn" id="checkUpdateBtn">Check for app update</button></div><pre id="diagBox" class="diagnostic hidden"></pre></div>
+    <div id="errorBox" class="error hidden"></div><div id="diagWrap" class="hidden"><div class="setup-actions"><button class="btn" id="diagBtn">Show diagnostics</button><a class="btn" href="#targetPlanner" style="text-decoration:none">Plan targets</a><button class="btn" id="checkUpdateBtn">Check for app update</button></div><pre id="diagBox" class="diagnostic hidden"></pre></div>
     <div id="dataNotice" class="notice hidden" role="status"></div><div id="updateNotice" class="notice hidden"><span id="updateMessage"></span> <button class="btn hidden" id="applyUpdateBtn">Apply update &amp; reload</button></div>
     <section class="grid hero-grid"><div class="card hero" id="hero"><div class="hero-row"><div><div class="label label-row"><span id="locationLabel">—</span><span class="bortle-ref hidden" id="bortleRef"></span><button class="info-button" type="button" data-info="bortle" aria-label="About Bortle class">i</button></div><div class="status-line"><span class="badge" id="statusBadge">—</span><span class="status-title" id="statusTitle">Loading…</span></div><div class="hero-copy" id="statusCopy">Retrieving Astrospheric forecast.</div><div class="night-chip" id="nightChip">Finding astronomical darkness…</div></div><div class="score-ring" id="scoreRing">—</div></div></div><div class="card"><div class="label">Best imaging window</div><div class="window" id="bestWindow">—</div><div class="sub" id="bestWindowTime">—</div><div class="scale"><span class="marker" id="windowMarker"></span></div><div class="scale-labels"><span>Poor</span><span>Marginal</span><span>Excellent</span></div></div></section>
     <section class="grid metrics" id="metricGrid"></section>
@@ -223,6 +227,27 @@
     <div class="section-title">Upcoming nights</div><p class="section-sub" id="outlookSub">Select a night to inspect its dark hours and best imaging window.</p><section class="outlook-grid" id="nightOutlook" aria-label="Upcoming night forecast"></section>
     <div class="section-title" id="nightDetailTitle">Tonight at a glance</div><p class="section-sub">Green is favorable. Yellow deserves attention. Red is a meaningful limitation.</p><section class="card timeline" id="timeline"></section>
     <section class="grid triple" style="margin-top:12px"><div class="card" id="moonCard"><div class="label label-row">Moon <button class="info-button" type="button" data-info="moon" aria-label="About Moon context">i</button></div><div class="detail-value" id="moonValue">—</div><div class="metric-status" id="moonStatus">—</div><div class="sub" id="moonDetail">—</div></div><div class="card" id="dewCard"><div class="label label-row">Dew margin <button class="info-button" type="button" data-info="dew" aria-label="About dew margin">i</button></div><div class="detail-value" id="dewValue">—</div><div class="metric-status" id="dewStatus">—</div><div class="sub" id="dewDetail">—</div></div><div class="card" id="planCard"><div class="label">Session plan</div><div class="detail-value" id="filterValue">—</div><div class="plan-detail" id="filterReason">—</div><select class="target-select" id="targetSelect" aria-label="Target type"><option value="emission">Emission nebula</option><option value="broadband">Galaxy or cluster</option><option value="reflection">Reflection or dust</option><option value="other">Other or equipment test</option></select><div class="prepare-line" id="prepareLine">—</div></div></section>
+    <section class="card target-planner" id="targetPlanner" aria-labelledby="plannerHeading">
+      <h2 id="plannerHeading">What could I image?</h2><p class="section-sub" id="plannerSite"></p>
+      <p class="sub" id="plannerRig"></p><p class="planner-help" id="plannerRigNote"></p>
+      <div class="planner-controls">
+        <div class="field"><label for="plannerDate">Night beginning</label><div class="planner-date"><input id="plannerDate" type="date" min="2020-01-01" max="2100-12-31"/><button class="btn" id="plannerFollow" type="button">Follow selected night</button></div></div>
+        <div class="field"><label for="plannerFilter">Imaging filter</label><select id="plannerFilter"></select></div>
+        <div class="field"><label for="plannerAltitude">Minimum target altitude</label><select id="plannerAltitude"><option value="20">20°</option><option value="30" selected>30°</option><option value="40">40°</option><option value="50">50°</option></select></div>
+      </div>
+      <div class="notice planner-forecast" id="plannerForecast" role="status"></div>
+      <p class="planner-help" id="plannerMethod"></p>
+      <div class="planner-search"><div class="field"><label for="plannerSearch">Find a target</label><input id="plannerSearch" type="search" placeholder="M31, Veil, Orion…" /></div><div class="field"><label for="plannerTarget" id="plannerCount">Curated deep-sky targets</label><select id="plannerTarget"></select></div></div>
+      <div id="plannerPicks" class="target-picks"></div><p id="plannerEmpty" role="status"></p>
+      <div id="plannerDetail" class="planner-detail">
+        <h3 id="plannerTargetName"></h3><div class="target-band" id="plannerBand"></div><p id="plannerWindow"></p><p class="sub" id="plannerPeak"></p>
+        <div class="planner-chart" id="plannerChart"></div><p class="planner-help">Blue: target altitude · dashed: Moon · shaded: darkness. Times use the selected site’s time zone.</p>
+        <div class="planner-facts"><div><h4>Framing</h4><p id="plannerFraming"></p></div><div><h4>Moon</h4><p id="plannerMoon"></p></div><div><h4>Filter</h4><p id="plannerFilterAdvice"></p></div><div><h4>Site</h4><p id="plannerSiteAdvice"></p></div></div>
+        <p class="planner-help" id="plannerObjectNote"></p><button class="btn primary" type="button" id="plannerSave">Save target for this night</button><p class="planner-help" id="plannerMessage" role="status"></p>
+      </div>
+      <details><summary id="plannerPlansCount">Planned targets (0)</summary><ul class="planner-plans" id="plannerPlans"></ul><p class="planner-help">Plans stay on this device. Saving a target does not start imaging or create a calendar event.</p></details>
+      <details><summary>Sources and planning limits</summary><p class="planner-help">Coordinates and catalog dimensions: <a href="https://github.com/mattiaverga/OpenNGC" target="_blank" rel="noopener">OpenNGC, Mattia Verga and contributors</a>, adapted under <a href="data/OpenNGC-LICENSE.txt">CC BY-SA 4.0</a>. Geometry: <a href="https://github.com/cosinekitty/astronomy" target="_blank" rel="noopener">Astronomy Engine</a>. <a href="data/README.md">Data and method notes</a>.</p><p class="planner-help">Sizes are approximate and may describe only part of a complex. Framing assumes nominal optics and deliberate camera rotation; inspect a real survey image before final framing. Moon and site guidance are heuristics, not exposure predictions. This release plans deep-sky imaging with the Z73; C8 lunar/planetary planning comes separately.</p></details>
+    </section>
     <details class="card"><summary>Scoring details</summary><div id="scoreDetails"></div><div class="footer">The GO / MARGINAL / NO-GO assessment is derived by this app from Astrospheric data; it is not an official Astrospheric rating.</div></details><div class="footer" id="footer">—</div>
   </main>
 </div>
@@ -231,6 +256,11 @@
   <div class="info-dialog-body" id="infoBody"></div>
 </dialog>
 <script src="providers.js"></script>
+<script src="vendor/astronomy.browser.min.js"></script>
+<script src="data/targets.js"></script>
+<script src="equipment.js"></script>
+<script src="planner.js"></script>
+<script src="planner-ui.js"></script>
 <script src="app.js"></script>
 
 </body></html>

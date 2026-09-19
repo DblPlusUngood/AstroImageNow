@@ -2,7 +2,8 @@
 
 const Providers=typeof module!=="undefined"?require("./providers.js"):AstroProviders;
 const API_BASE=Providers.ASTRO_BASE;
-const APP_VERSION="1.10.0";
+const APP_VERSION="1.11.0";
+const Planner=typeof module!=="undefined"?require("./planner.js"):TargetPlanner;
 const SNAPSHOT_KEY="astroImageNowLastGoodV1";
 const SETTINGS_KEY="astroImageNowSettings";
 const LEGACY_SETTINGS_KEY="astroTonightSettings";
@@ -416,22 +417,9 @@ function weatherSummaryForRows(rows,weather=state.weather){
 
 function filterRecommendation({targetType,bortle,moon,transparency,weather}){
   const target=normalizeTargetType(targetType);
-  const illumination=Number(moon?.IlluminationPercent||0);
-  const brightMoon=Boolean(moon?.IsAboveHorizon)&&illumination>=35;
-  const brightSite=Number.isFinite(Number(bortle))&&Number(bortle)>=5;
-  const reducedClarity=Number.isFinite(transparency)&&transparency<48
-    ||weather?.visibilityMiles!==null&&weather?.visibilityMiles<6
-    ||weather?.aqi!==null&&weather?.aqi>=101
-    ||weather?.aerosolOpticalDepth!==null&&weather?.aerosolOpticalDepth>=0.4;
-
-  if(target==="emission"){
-    if(reducedClarity)return{title:"Dual-band optional",reason:"It can improve emission contrast, but haze or poor transparency still removes target signal."};
-    if(brightMoon||brightSite)return{title:"Dual-band useful",reason:brightMoon?"An illuminated Moon is above the horizon during this night.":`Bortle ${bortle} sky glow favors narrow emission bands.`};
-    return{title:"No filter required",reason:"Dark-site and Moon conditions do not demand a contrast filter for this emission target."};
-  }
-  if(target==="broadband")return{title:"UV/IR cut or none",reason:"Keep the broad spectrum for galaxies and clusters; a dual-band filter would discard useful signal and color."};
-  if(target==="reflection")return{title:"UV/IR cut or none",reason:"Reflection nebulae and dust are broadband targets, so preserve their continuum light."};
-  return{title:"Use the test plan",reason:"Choose the filter required by the equipment or comparison you intend to run."};
+  if(target==="emission")return{title:"L-Pro or unfiltered",reason:"L-Pro is the confirmed owned imaging filter. It is broadband, not dual-band; use the target planner below for Moon and site context."};
+  if(target==="broadband"||target==="reflection")return{title:"Unfiltered / L-Pro comparison",reason:"Preserve continuum light for galaxies, clusters and reflection dust. L-Pro is optional and does not replace darker skies."};
+  return{title:"Use the test plan",reason:"Use the owned filter or unfiltered baseline required by the controlled test."};
 }
 
 function preparationGuidance(weather,components){
@@ -461,26 +449,7 @@ function hourlyRows(){
 }
 
 function sunAltitudeDeg(iso,latitude,longitude){
-  const date=new Date(iso);
-  const radians=Math.PI/180;
-  const degrees=180/Math.PI;
-  const julianDate=date.getTime()/86400000+2440587.5;
-  const n=julianDate-2451545;
-  const meanLongitude=(280.460+0.9856474*n)%360;
-  const meanAnomaly=(357.528+0.9856003*n)%360;
-  const eclipticLongitude=(meanLongitude+1.915*Math.sin(meanAnomaly*radians)+0.020*Math.sin(2*meanAnomaly*radians)+360)%360;
-  const obliquity=(23.439-0.0000004*n)*radians;
-  const lambda=eclipticLongitude*radians;
-  const declination=Math.asin(Math.sin(obliquity)*Math.sin(lambda));
-  const rightAscension=Math.atan2(Math.cos(obliquity)*Math.sin(lambda),Math.cos(lambda))*degrees;
-  const siderealTime=(280.46061837+360.98564736629*(julianDate-2451545.0))%360;
-  let hourAngle=((siderealTime+longitude-rightAscension+540)%360)-180;
-  hourAngle*=radians;
-  const phi=latitude*radians;
-  return Math.asin(
-    Math.sin(phi)*Math.sin(declination)+
-    Math.cos(phi)*Math.cos(declination)*Math.cos(hourAngle)
-  )*degrees;
+  return Planner.sunAltitude(iso,{lat:latitude,lon:longitude});
 }
 
 function groupedDarkRows(threshold){
@@ -790,6 +759,7 @@ function render(){
     $("outlookSub").textContent="No upcoming dark window available.";
     $("weatherNote").textContent=state.weatherError||"Weather forecast not yet available for a dark window.";
     $("footer").textContent=`AstroImageNow ${APP_VERSION}`;
+    renderTargetPlanning(nights,timeZone);
     return;
   }
   const selected=nights.findIndex(rows=>nightKey(rows,timeZone)===state.settings.selectedNightKey);
@@ -913,6 +883,28 @@ function render(){
   const creditRecords=Object.values(state.providerStatus).filter(record=>Number.isFinite(record.creditsRemaining));
   const credits=creditRecords.length?Math.min(...creditRecords.map(r=>r.creditsRemaining)):"—";
   $("footer").textContent=`AstroImageNow ${APP_VERSION} · Astronomy score uses capped hourly values · Model ${forecast.ModelTime||"unavailable"} · API credits remaining ${credits}`;
+  renderTargetPlanning(nights,timeZone);
+}
+
+function renderTargetPlanning(nights,timeZone){
+  if(typeof window==="undefined"||typeof TargetPlannerUI==="undefined")return;
+  const location=activeLocation();
+  TargetPlannerUI.render({location,sites:state.settings.locations,timeZone,
+    nightDate:nightKey(nights[state.selectedNightIndex]||[],timeZone)||Planner.dateAt(Date.now(),timeZone),
+    conditionsForDate:date=>targetPlanningWeather(nights,date,timeZone)
+  });
+}
+
+function targetPlanningWeather(nights,date,timeZone){
+  const index=nights.findIndex(rows=>nightKey(rows,timeZone)===date);
+  if(index<0)return{severity:"unknown",message:"Geometry only: no current forecast covers this night. Recheck weather before committing."};
+  if(state.weatherStale||state.forecastStale)return{severity:"unknown",message:"Saved forecast is stale. Target geometry is calculated for the chosen date; refresh conditions before setup."};
+  const rows=nights[index],weather=weatherSummaryForRows(rows),summary=summaryForNight(rows,moonForNight(index));
+  if(weather?.severity==="danger")return{severity:"danger",message:`Weather blocks setup: ${weather.watch}. Targets below are planning candidates for this date, not a go-ahead.`};
+  if(!weather||!weather.complete)return{severity:"unknown",message:"Weather hazards are not fully assessed. Geometry alone cannot establish a safe imaging opportunity."};
+  if(!Number.isFinite(summary.score))return{severity:"unknown",message:`Weather: ${weather.watch}. Astronomy forecast detail is incomplete; geometry and framing remain available.`};
+  if(summary.score<48)return{severity:"danger",message:"Poor imaging conditions in the night forecast. Use these targets to plan, then recheck before setting up."};
+  return{severity:weather.severity,message:`Night forecast: ${verdictForScore(summary.score)[0]} · ${weather.watch}. Target windows below describe altitude and Moon geometry; clouds can vary within them.`};
 }
 
 function contextFor(settings=state.settings){
@@ -1325,6 +1317,7 @@ if(typeof module!=="undefined"){
     refresh,
     render,
     diagnosticSummary,
+    targetPlanningWeather,
     operationalVerdict,
     contextFor,
     nightKey,

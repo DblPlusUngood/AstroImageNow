@@ -163,8 +163,8 @@ test("weather visibility honors imperial feet from the live API shape",()=>{
 
 test("filter guidance distinguishes emission from broadband targets",()=>{
   const moon={IsAboveHorizon:true,IlluminationPercent:70};
-  assert.equal(app.filterRecommendation({targetType:"emission",bortle:6,moon,transparency:80,weather:null}).title,"Dual-band useful");
-  assert.equal(app.filterRecommendation({targetType:"broadband",bortle:6,moon,transparency:80,weather:null}).title,"UV/IR cut or none");
+  assert.equal(app.filterRecommendation({targetType:"emission",bortle:6,moon,transparency:80,weather:null}).title,"L-Pro or unfiltered");
+  assert.equal(app.filterRecommendation({targetType:"broadband",bortle:6,moon,transparency:80,weather:null}).title,"Unfiltered / L-Pro comparison");
 });
 
 test("preparation guidance promotes hazards, clothing, and dew control",()=>{

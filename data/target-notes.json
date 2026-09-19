@@ -1,0 +1,202 @@
+{
+  "NGC0224": {
+    "type": "galaxy",
+    "lightPollution": "high",
+    "notes": "The full Andromeda disk is larger than the Z73/ASI533 field; plan a mosaic or a deliberate core composition.",
+    "framingReliable": true
+  },
+  "NGC0598": {
+    "type": "galaxy",
+    "lightPollution": "high",
+    "notes": "Faint outer structure rewards darker sky and integration time.",
+    "framingReliable": true
+  },
+  "Mel022": {
+    "type": "reflection",
+    "lightPollution": "high",
+    "notes": "Catalog size describes the cluster; surrounding reflection dust extends beyond it.",
+    "framingReliable": true
+  },
+  "NGC7000": {
+    "type": "emission",
+    "lightPollution": "moderate",
+    "notes": "North America component only; the combined Pelican complex is larger.",
+    "framingReliable": true
+  },
+  "IC5070": {
+    "type": "emission",
+    "lightPollution": "moderate",
+    "notes": "",
+    "framingReliable": true
+  },
+  "NGC6992": {
+    "type": "supernova",
+    "lightPollution": "moderate",
+    "name": "Eastern Veil (NGC 6992)",
+    "notes": "This is one component, not the full Veil complex.",
+    "framingReliable": true
+  },
+  "NGC6960": {
+    "type": "supernova",
+    "lightPollution": "moderate",
+    "name": "Western Veil (NGC 6960)",
+    "notes": "OpenNGC lists a complex-scale extent at this component position; inspect a survey image before framing.",
+    "framingReliable": false
+  },
+  "NGC6888": {
+    "type": "emission",
+    "lightPollution": "moderate",
+    "notes": "Small in this wide field; surrounding nebulosity can be part of the composition.",
+    "framingReliable": true
+  },
+  "NGC7635": {
+    "type": "emission",
+    "lightPollution": "moderate",
+    "notes": "",
+    "framingReliable": true
+  },
+  "NGC0281": {
+    "type": "emission",
+    "lightPollution": "moderate",
+    "name": "Pacman Nebula",
+    "notes": "",
+    "framingReliable": true
+  },
+  "NGC1499": {
+    "type": "emission",
+    "lightPollution": "moderate",
+    "notes": "",
+    "framingReliable": true
+  },
+  "NGC1333": {
+    "type": "reflection",
+    "lightPollution": "high",
+    "name": "NGC 1333",
+    "notes": "Catalog dimensions are incomplete and do not bound the surrounding molecular cloud.",
+    "framingReliable": false
+  },
+  "NGC1976": {
+    "type": "emission",
+    "lightPollution": "moderate",
+    "name": "Orion Nebula",
+    "notes": "Very large dynamic range; preserve the bright core in the exposure plan.",
+    "framingReliable": true
+  },
+  "NGC2237": {
+    "type": "emission",
+    "lightPollution": "moderate",
+    "name": "Rosette (NGC 2237)",
+    "notes": "Catalog entry is Rosette A; the entire multi-component Rosette requires separate framing verification.",
+    "framingReliable": false
+  },
+  "NGC2264": {
+    "type": "mixed",
+    "lightPollution": "high",
+    "name": "Christmas Tree Cluster",
+    "notes": "Catalog diameter describes the cluster, not the full Cone/Fox Fur region.",
+    "framingReliable": false
+  },
+  "IC0443": {
+    "type": "supernova",
+    "lightPollution": "moderate",
+    "name": "Jellyfish Nebula",
+    "notes": "",
+    "framingReliable": true
+  },
+  "NGC2174": {
+    "type": "emission",
+    "lightPollution": "moderate",
+    "notes": "",
+    "framingReliable": true
+  },
+  "NGC2024": {
+    "type": "emission",
+    "lightPollution": "moderate",
+    "name": "Flame Nebula",
+    "notes": "This entry does not include the full Horsehead region.",
+    "framingReliable": true
+  },
+  "NGC5194": {
+    "type": "galaxy",
+    "lightPollution": "high",
+    "notes": "The catalog extent describes NGC 5194; include its companion deliberately.",
+    "framingReliable": true
+  },
+  "NGC3031": {
+    "type": "galaxy",
+    "lightPollution": "high",
+    "notes": "M82 is a separate target; this field estimate is for M81 alone.",
+    "framingReliable": true
+  },
+  "NGC3034": {
+    "type": "galaxy",
+    "lightPollution": "high",
+    "notes": "",
+    "framingReliable": true
+  },
+  "NGC6205": {
+    "type": "globular",
+    "lightPollution": "low",
+    "notes": "",
+    "framingReliable": true
+  },
+  "NGC0869": {
+    "type": "cluster",
+    "lightPollution": "low",
+    "name": "h Persei",
+    "notes": "One half of the Double Cluster; the combined pair needs a wider composition.",
+    "framingReliable": true
+  },
+  "NGC0884": {
+    "type": "cluster",
+    "lightPollution": "low",
+    "name": "chi Persei",
+    "notes": "One half of the Double Cluster; the combined pair needs a wider composition.",
+    "framingReliable": true
+  },
+  "NGC7293": {
+    "type": "planetary-nebula",
+    "lightPollution": "moderate",
+    "notes": "Low altitude can be the limiting factor from Ohio.",
+    "framingReliable": true
+  },
+  "NGC6720": {
+    "type": "planetary-nebula",
+    "lightPollution": "low",
+    "notes": "Very small in the Z73 field; expect a small object rather than resolved close detail.",
+    "framingReliable": true
+  },
+  "NGC6853": {
+    "type": "planetary-nebula",
+    "lightPollution": "low",
+    "notes": "",
+    "framingReliable": true
+  },
+  "NGC7789": {
+    "type": "cluster",
+    "lightPollution": "low",
+    "name": "Caroline’s Rose",
+    "notes": "",
+    "framingReliable": true
+  },
+  "NGC0457": {
+    "type": "cluster",
+    "lightPollution": "low",
+    "notes": "",
+    "framingReliable": true
+  },
+  "NGC0891": {
+    "type": "galaxy",
+    "lightPollution": "high",
+    "name": "NGC 891",
+    "notes": "Edge-on galaxy; faint extensions benefit from darker skies.",
+    "framingReliable": true
+  },
+  "NGC7331": {
+    "type": "galaxy",
+    "lightPollution": "high",
+    "name": "NGC 7331",
+    "notes": "This entry covers the galaxy, not the entire surrounding group.",
+    "framingReliable": true
+  }
+}

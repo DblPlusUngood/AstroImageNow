@@ -1,0 +1,11 @@
+{
+  "retrieved": "2026-09-19",
+  "openNGCVersion": "v20260501",
+  "openNGCCommit": "36cb178a0f69dba8bfc03a99c10512831edf1c6b",
+  "astronomyEngineVersion": "v2.1.19",
+  "sha256": {
+    "NGC.csv": "840fe0c9ee1332e551b2e722a0e92726cd7b157914a3d2177602832aadd3aa9e",
+    "addendum.csv": "1d8f0914e643ada325a5a94d88d8fefad6a4937a2f77cc34f21483af22b11983",
+    "astronomy.browser.min.js": "f41139a87941ea017ab902b954c9389fa27ea72083d7fab4971756d7769d14e6"
+  }
+}
