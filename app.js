@@ -1,9 +1,9 @@
 "use strict";
 
-const API_BASE="https://v2-api-public.astrospheric.com/api";
-const FORECA_API_BASE="https://pfa.foreca.com/api/v1";
-const OPEN_METEO_API_BASE="https://api.open-meteo.com/v1/forecast";
-const OPEN_METEO_AIR_API_BASE="https://air-quality-api.open-meteo.com/v1/air-quality";
+const Providers=typeof module!=="undefined"?require("./providers.js"):AstroProviders;
+const API_BASE=Providers.ASTRO_BASE;
+const APP_VERSION="1.10.0";
+const SNAPSHOT_KEY="astroImageNowLastGoodV1";
 const SETTINGS_KEY="astroImageNowSettings";
 const LEGACY_SETTINGS_KEY="astroTonightSettings";
 const COLORS={green:"#22c55e",lime:"#84cc16",yellow:"#eab308",orange:"#f97316",red:"#ef4444",blue:"#60a5fa"};
@@ -60,7 +60,16 @@ const state={
   weatherError:"",
   weatherNotice:"",
   moons:[],
-  sun:null,
+  providerStatus:{},
+  fetchedAt:null,
+  forecastStale:false,
+  weatherStale:false,
+  refreshId:0,
+  refreshController:null,
+  dataContext:null,
+  lastGood:null,
+  swRegistration:null,
+  storageNotice:"",
   selectedNightIndex:0,
   darknessThreshold:-18,
   diagnostic:"",
@@ -91,14 +100,19 @@ function normalizeWeatherSource(value){
 
 function normalizeLocation(location,idFallback=createLocationId()){
   if(!location)return null;
-  const latitude=Number(location.lat);
-  const longitude=Number(location.lon);
-  if(!Number.isFinite(latitude)||!Number.isFinite(longitude))return null;
+  const latitude=Providers.number(location.lat,-90,90);
+  const longitude=Providers.number(location.lon,-180,180);
+  if(latitude===null||longitude===null)return null;
+  let timeZone=null;
+  if(typeof location.timeZone==="string"){
+    try{new Intl.DateTimeFormat("en",{timeZone:location.timeZone});timeZone=location.timeZone}catch{}
+  }
   return{
     id:String(location.id||idFallback),
     name:String(location.name||location.locationName||"Observing location"),
     lat:latitude,
     lon:longitude,
+    timeZone,
     bortle:normalizeBortle(location.bortle),
     alertThreshold:normalizeAlertThreshold(location.alertThreshold)
   };
@@ -117,12 +131,13 @@ function normalizeSettings(raw){
   const requestedActive=String(raw.activeLocationId||locations[0].id);
   const activeLocationId=locations.some(location=>location.id===requestedActive)?requestedActive:locations[0].id;
   return{
-    version:4,
+    version:5,
     apiKey:String(raw.apiKey||""),
     forecaToken:String(raw.forecaToken||""),
     weatherSource:normalizeWeatherSource(raw.weatherSource),
     targetType:normalizeTargetType(raw.targetType),
     activeLocationId,
+    selectedNightKey:typeof raw.selectedNightKey==="string"?raw.selectedNightKey:null,
     locations
   };
 }
@@ -160,6 +175,7 @@ function alertThresholdFor(location=activeLocation()){
 }
 
 function colorForScore(score){
+  if(!Number.isFinite(score))return"#8b9bb0";
   if(score>=80)return COLORS.green;
   if(score>=65)return COLORS.lime;
   if(score>=48)return COLORS.yellow;
@@ -168,16 +184,18 @@ function colorForScore(score){
 }
 
 function verdictForScore(score){
+  if(!Number.isFinite(score))return["UNKNOWN","Astronomy assessment incomplete"];
   if(score>=75)return["GO","Set up the telescope"];
   if(score>=48)return["MARGINAL","Conditional imaging night"];
   return["NO-GO","Skip the full setup"];
 }
 
 function clamp(value,min=0,max=100){return Math.max(min,Math.min(max,value))}
-function cloudScore(value){return clamp(100-Number(value))}
+function cloudScore(value){const n=Providers.number(value,0,100);return n===null?null:100-n}
 
 function transparencyScore(value){
-  value=Number(value);
+  value=Providers.number(value,0,100);
+  if(value===null)return null;
   if(value<=5)return 100-value*2;
   if(value<=9)return 88-(value-5)*5;
   if(value<=13)return 68-(value-9)*5;
@@ -187,13 +205,15 @@ function transparencyScore(value){
 }
 
 function seeingScore(value){
-  return({0:5,1:25,2:45,3:62,4:82,5:100})[Math.round(Number(value))]??50;
+  value=Providers.number(value,0,5);
+  return value===null?null:({0:5,1:25,2:45,3:62,4:82,5:100})[Math.round(value)];
 }
 
-function windToMph(value){return Number(value)*2.236936}
+function windToMph(value){const n=Providers.number(value,0,150);return n===null?null:n*2.236936}
 
 function windScore(value){
   const mph=windToMph(value);
+  if(mph===null)return null;
   if(mph<=4)return 100;
   if(mph<=8)return 85;
   if(mph<=12)return 65;
@@ -202,7 +222,7 @@ function windScore(value){
   return 5;
 }
 
-function kelvinToF(kelvin){return(Number(kelvin)-273.15)*9/5+32}
+function kelvinToF(kelvin){const n=Providers.number(kelvin,100,400);return n===null?null:(n-273.15)*9/5+32}
 
 function dewMarginF(temperature,dewPoint){
   const temperatureF=kelvinToF(temperature);
@@ -212,6 +232,7 @@ function dewMarginF(temperature,dewPoint){
 
 function dewScore(temperature,dewPoint){
   const margin=dewMarginF(temperature,dewPoint);
+  if(margin===null)return null;
   if(margin>=10)return 100;
   if(margin>=7)return 86;
   if(margin>=5)return 70;
@@ -221,8 +242,10 @@ function dewScore(temperature,dewPoint){
 }
 
 function moonScore(moon){
-  if(!moon||!moon.IsAboveHorizon)return 100;
-  const illumination=Number(moon.IlluminationPercent||0);
+  if(!moon||typeof moon.IsAboveHorizon!=="boolean")return null;
+  if(!moon.IsAboveHorizon)return 100;
+  const illumination=Providers.number(moon.IlluminationPercent,0,100);
+  if(illumination===null)return null;
   if(illumination<=20)return 92;
   if(illumination<=40)return 80;
   if(illumination<=65)return 67;
@@ -231,6 +254,7 @@ function moonScore(moon){
 }
 
 function weightedScore(scores){
+  if(!["cloud","transparency","seeing","wind","dew","moon"].every(key=>Number.isFinite(scores[key])))return null;
   return clamp(
     scores.cloud*.36+
     scores.transparency*.27+
@@ -251,8 +275,8 @@ function fmtHour(iso,timeZone){
     .format(new Date(iso)).replace(" ","").toLowerCase();
 }
 
-function fmtUpdated(){
-  return new Intl.DateTimeFormat("en-US",{hour:"numeric",minute:"2-digit"}).format(new Date());
+function fmtUpdated(iso=state.fetchedAt){
+  return iso?new Intl.DateTimeFormat("en-US",{hour:"numeric",minute:"2-digit"}).format(new Date(iso)):"not fetched";
 }
 
 function fmtNightDate(iso,timeZone){
@@ -264,141 +288,14 @@ function fmtNightDate(iso,timeZone){
   }).format(new Date(iso));
 }
 
-async function api(endpoint,body){
-  const response=await fetch(`${API_BASE}/${endpoint}`,{
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({...body,APIKey:state.settings.apiKey})
-  });
-  let data={};
-  try{data=await response.json()}catch{}
-  if(!response.ok)throw new Error(data.ErrorInfo||`Astrospheric returned HTTP ${response.status}`);
-  if(data.ErrorInfo)throw new Error(data.ErrorInfo);
-  return data;
+function api(endpoint,body,context={}){
+  return Providers.astronomy(endpoint,body,state.settings?.apiKey,context);
 }
 
-function roundedWeatherLocation(location){
-  return{
-    lat:Math.round(Number(location.lat)*100)/100,
-    lon:Math.round(Number(location.lon)*100)/100
-  };
-}
-
-async function fetchJson(url,options,provider){
-  const response=await fetch(url,options);
-  let data={};
-  try{data=await response.json()}catch{}
-  if(!response.ok)throw new Error(`${provider} returned HTTP ${response.status}${data.reason||data.message?`: ${data.reason||data.message}`:""}`);
-  return data;
-}
-
-function normalizeForecaWeather(currentData,hourlyData,airData={}){
-  const current=currentData.current||currentData;
-  const forecast=Array.isArray(hourlyData.forecast)?hourlyData.forecast:[];
-  const airForecast=Array.isArray(airData.forecast)?airData.forecast:[];
-  const airByTime=new Map(airForecast.map(item=>[weatherTimeMs(item.time),item]));
-  const pick=(key,fallback=null)=>forecast.map(item=>item[key]??fallback);
-  const pickAir=key=>forecast.map(item=>airByTime.get(weatherTimeMs(item.time))?.[key]??null);
-  return{
-    meta:{provider:"foreca",label:"Weather data by Foreca",url:"https://www.foreca.com/",hasAirQuality:airForecast.length>0},
-    current:{
-      temperature_2m:current.temperature,
-      apparent_temperature:current.feelsLikeTemp,
-      relative_humidity_2m:current.relHumidity,
-      weather_code:null,
-      weather_phrase:current.symbolPhrase||"",
-      precipitation:current.precipAccum,
-      visibility:current.visibility,
-      wind_gusts_10m:current.windGust
-    },
-    hourly_units:{visibility:"m"},
-    hourly:{
-      time:pick("time"),
-      temperature_2m:pick("temperature"),
-      relative_humidity_2m:pick("relHumidity"),
-      precipitation_probability:pick("precipProb"),
-      precipitation:pick("precipAccum"),
-      weather_code:pick("weatherCode"),
-      weather_phrase:pick("symbolPhrase",""),
-      thunder_probability:pick("thunderProb"),
-      visibility:pick("visibility"),
-      wind_gusts_10m:pick("windGust"),
-      us_aqi:pickAir("AQI"),
-      us_aqi_pm2_5:pickAir("AQI_PM2P5"),
-      pm2_5:pickAir("PM2P5")
-    }
-  };
-}
-
-async function fetchForecaWeather(location,token){
-  const rounded=roundedWeatherLocation(location);
-  const point=`${rounded.lon},${rounded.lat}`;
-  const headers={Authorization:`Bearer ${token}`};
-  const query="tempunit=F&windunit=MPH&tz=UTC";
-  const [current,hourly,air]=await Promise.all([
-    fetchJson(`${FORECA_API_BASE}/current/${point}?${query}`,{headers},"Foreca"),
-    fetchJson(`${FORECA_API_BASE}/forecast/hourly/${point}?periods=168&dataset=full&${query}`,{headers},"Foreca"),
-    fetchJson(`${FORECA_API_BASE}/air-quality/forecast/hourly/${point}?periods=84&tz=UTC`,{headers},"Foreca").catch(()=>({forecast:[]}))
-  ]);
-  return normalizeForecaWeather(current,hourly,air);
-}
-
-async function fetchOpenMeteoWeather(location){
-  const rounded=roundedWeatherLocation(location);
-  const params=new URLSearchParams({
-    latitude:String(rounded.lat),
-    longitude:String(rounded.lon),
-    current:"temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,precipitation,visibility,wind_gusts_10m",
-    hourly:"temperature_2m,relative_humidity_2m,precipitation_probability,precipitation,weather_code,visibility,wind_gusts_10m",
-    temperature_unit:"fahrenheit",
-    wind_speed_unit:"mph",
-    precipitation_unit:"inch",
-    timezone:"GMT",
-    forecast_days:"8"
-  });
-  const airParams=new URLSearchParams({
-    latitude:String(rounded.lat),
-    longitude:String(rounded.lon),
-    hourly:"us_aqi,us_aqi_pm2_5,pm2_5,aerosol_optical_depth",
-    timezone:"GMT",
-    forecast_days:"5"
-  });
-  const [data,air]=await Promise.all([
-    fetchJson(`${OPEN_METEO_API_BASE}?${params}`,{},"Open-Meteo"),
-    fetchJson(`${OPEN_METEO_AIR_API_BASE}?${airParams}`,{},"Open-Meteo air quality").catch(()=>null)
-  ]);
-  data.meta={provider:"open-meteo",label:"Weather data by Open-Meteo",url:"https://open-meteo.com/",hasAirQuality:Boolean(air)};
-  if(air?.hourly?.time){
-    const airByTime=new Map(air.hourly.time.map((time,index)=>[weatherTimeMs(time),index]));
-    for(const key of ["us_aqi","us_aqi_pm2_5","pm2_5","aerosol_optical_depth"]){
-      data.hourly[key]=data.hourly.time.map(time=>{
-        const index=airByTime.get(weatherTimeMs(time));
-        return index===undefined?null:air.hourly[key]?.[index]??null;
-      });
-    }
-  }
-  return data;
-}
-
-async function fetchSupplementalWeather(location,settings=state.settings){
-  const source=normalizeWeatherSource(settings?.weatherSource);
-  const token=String(settings?.forecaToken||"").trim();
-  state.weatherNotice="";
-  if(source==="open-meteo")return fetchOpenMeteoWeather(location);
-  if(!token){
-    if(source==="foreca")throw new Error("Foreca only is selected, but no Foreca API token is saved.");
-    state.weatherNotice="Foreca token not configured; using Open-Meteo backup.";
-    return fetchOpenMeteoWeather(location);
-  }
-  try{return await fetchForecaWeather(location,token)}
-  catch(error){
-    if(source==="foreca")throw error;
-    state.weatherNotice="Foreca unavailable; using Open-Meteo backup.";
-    const backup=await fetchOpenMeteoWeather(location);
-    backup.meta.fallbackFrom="foreca";
-    backup.meta.fallbackReason=error.message;
-    return backup;
-  }
+function roundedWeatherLocation(location){return Providers.roundedLocation(location)}
+function normalizeForecaWeather(current,hourly,air){return Providers.normalizeForecaWeather(current,hourly,air)}
+async function fetchSupplementalWeather(location,settings=state.settings,context={}){
+  return Providers.supplemental(location,settings,context);
 }
 
 function weatherTimeMs(value){
@@ -478,9 +375,15 @@ function weatherSummaryForRows(rows,weather=state.weather){
   const gustEntry=entries.find(entry=>entry.gust>=18);
   const airEntry=entries.find(entry=>entry.aqi>=101||entry.aqiPm25>=101||entry.aerosolOpticalDepth>=0.4);
 
-  let watch="No major hazard";
+  const hazardsComplete=entries.every(entry=>
+    Number.isFinite(entry.rainProbability)&&Number.isFinite(entry.precipitation)&&Number.isFinite(entry.gust)&&Number.isFinite(entry.visibility)
+    &&(Number.isFinite(entry.code)||Number.isFinite(entry.thunderProbability))
+  );
+  const expectedHours=Math.round((Date.parse(rows.at(-1).UTCForecastHour)-Date.parse(rows[0].UTCForecastHour))/3600000)+1;
+  const complete=hazardsComplete&&entries.length>=expectedHours;
+  let watch=complete?"No major hazard":"Hazard data incomplete";
   let watchTime=null;
-  let severity="clear";
+  let severity=complete?"clear":"unknown";
   if(stormEntry){watch="Storm risk";watchTime=stormEntry.time;severity="danger"}
   else if(fogEntry||visibilityMiles!==null&&visibilityMiles<3){watch="Fog / low visibility";watchTime=(fogEntry||visibilityEntry)?.time||null;severity="danger"}
   else if(rain!==null&&rain>=50||rainAmount!==null&&rainAmount>=0.05){watch="Rain likely";watchTime=rainEntry?.time||null;severity="danger"}
@@ -504,6 +407,7 @@ function weatherSummaryForRows(rows,weather=state.weather){
     pm25,
     aerosolOpticalDepth,
     provider:weather.meta?.provider||"unknown",
+    complete,
     watch,
     watchTime,
     severity
@@ -515,7 +419,7 @@ function filterRecommendation({targetType,bortle,moon,transparency,weather}){
   const illumination=Number(moon?.IlluminationPercent||0);
   const brightMoon=Boolean(moon?.IsAboveHorizon)&&illumination>=35;
   const brightSite=Number.isFinite(Number(bortle))&&Number(bortle)>=5;
-  const reducedClarity=Number(transparency)<48
+  const reducedClarity=Number.isFinite(transparency)&&transparency<48
     ||weather?.visibilityMiles!==null&&weather?.visibilityMiles<6
     ||weather?.aqi!==null&&weather?.aqi>=101
     ||weather?.aerosolOpticalDepth!==null&&weather?.aerosolOpticalDepth>=0.4;
@@ -535,7 +439,8 @@ function preparationGuidance(weather,components){
   if(weather?.severity==="danger")guidance.push(weather.watch);
   if(weather?.low!==null&&weather?.low<40)guidance.push(`Cold-weather layers for ${Math.round(weather.low)}°F`);
   else if(weather?.low!==null&&weather?.low<55)guidance.push(`Bring a layer for ${Math.round(weather.low)}°F`);
-  if(components.dew<65)guidance.push("Dew control from setup");
+  if(Number.isFinite(components.dew)&&components.dew<65)guidance.push("Dew control from setup");
+  if(!weather||weather.severity==="unknown")guidance.push("Check current weather before setup");
   if(weather?.severity==="watch"&&!guidance.includes(weather.watch))guidance.push(weather.watch);
   if(weather?.gust!==null&&weather?.gust>=18&&!guidance.some(item=>item.includes("gust")))guidance.push(`Plan for ${Math.round(weather.gust)} mph gusts`);
   if(!guidance.length)guidance.push("No unusual preparation beyond the standard setup");
@@ -543,7 +448,16 @@ function preparationGuidance(weather,components){
 }
 
 function hourlyRows(){
-  return Array.isArray(state.forecast?.HourlyForecast)?state.forecast.HourlyForecast:[];
+  const byTime=new Map();
+  for(const time of state.weather?.hourly?.time||[]){
+    const ms=weatherTimeMs(time);
+    if(Number.isFinite(ms))byTime.set(ms,{UTCForecastHour:new Date(ms).toISOString()});
+  }
+  for(const row of state.forecast?.HourlyForecast||[]){
+    const ms=weatherTimeMs(row.UTCForecastHour);
+    if(Number.isFinite(ms))byTime.set(ms,row);
+  }
+  return[...byTime].sort((a,b)=>a[0]-b[0]).map(x=>x[1]);
 }
 
 function sunAltitudeDeg(iso,latitude,longitude){
@@ -580,6 +494,7 @@ function groupedDarkRows(threshold){
   let current=[];
   for(const row of rows){
     const isDark=sunAltitudeDeg(row.UTCForecastHour,latitude,longitude)<=threshold;
+    if(current.length&&Date.parse(row.UTCForecastHour)-Date.parse(current.at(-1).UTCForecastHour)>3600000){groups.push(current);current=[]}
     if(isDark){
       current.push(row);
     }else if(current.length){
@@ -602,7 +517,8 @@ function upcomingGroups(groups){
   const futureIndex=groups.findIndex(group=>
     new Date(group[group.length-1].UTCForecastHour).getTime()>=now
   );
-  const startIndex=currentIndex>=0?currentIndex:futureIndex>=0?futureIndex:0;
+  if(currentIndex<0&&futureIndex<0)return[];
+  const startIndex=currentIndex>=0?currentIndex:futureIndex;
   return groups.slice(startIndex,startIndex+7);
 }
 
@@ -621,7 +537,7 @@ function availableNights(){
 
   const rows=hourlyRows();
   state.darknessThreshold=null;
-  return rows.length?[rows.slice(0,12)]:[];
+  return[];
 }
 
 function darkRows(){
@@ -654,6 +570,7 @@ function hourlyScoresForRow(row,moon){
 function overallForRow(row,moon){
   const scores=hourlyScoresForRow(row,moon);
   let overall=weightedScore(scores);
+  if(overall===null)return null;
   const cloud=Number(rowValue(row,"Cloud"));
   const wind=windToMph(rowValue(row,"Wind"));
   const transparency=rowValue(row,"Transparency");
@@ -680,7 +597,7 @@ function overallAt(index){
 }
 
 function findBestWindowForRows(rows,moon){
-  const good=rows.map(row=>overallForRow(row,moon)>=65);
+  const good=rows.map(row=>{const score=overallForRow(row,moon);return Number.isFinite(score)&&score>=65});
   let best={start:-1,end:-1,len:0};
   let current=-1;
   for(let index=0;index<=rows.length;index++){
@@ -696,12 +613,12 @@ function findBestWindowForRows(rows,moon){
     let bestScore=-1;
     for(let index=0;index<rows.length;index++){
       const score=overallForRow(rows[index],moon);
-      if(score>bestScore){
+      if(Number.isFinite(score)&&score>bestScore){
         bestScore=score;
         bestIndex=index;
       }
     }
-    return{start:bestIndex,end:bestIndex,len:1,score:bestScore};
+    return{start:bestIndex,end:bestIndex,len:rows.length?1:0,score:bestScore>=0?bestScore:null};
   }
 
   let sum=0;
@@ -718,11 +635,12 @@ function summaryForNight(rows,moon){
   const best=findBestWindowForRows(rows,moon);
   const center=Math.round((best.start+best.end)/2);
   const components=hourlyScoresForRow(rows[center],moon);
-  const score=weightedScore(components);
+  const score=best.score;
   return{best,center,components,score};
 }
 
 function conditionText(label,score){
+  if(!Number.isFinite(score))return"Unavailable";
   if(score>=80)return`${label} · Excellent`;
   if(score>=65)return`${label} · Good`;
   if(score>=48)return`${label} · Marginal`;
@@ -730,20 +648,37 @@ function conditionText(label,score){
   return`${label} · Limiting`;
 }
 
+function scoreText(score){return Number.isFinite(score)?String(Math.round(score)):"—"}
+function nightKey(rows,timeZone="Etc/UTC"){
+  if(!rows.length)return null;
+  const middle=Date.parse(rows[Math.floor(rows.length/2)].UTCForecastHour)-12*3600000;
+  return new Intl.DateTimeFormat("en-CA",{timeZone,year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date(middle));
+}
+function nightLabelFor(rows,index,timeZone){
+  const evening=new Date(Date.parse(rows[Math.floor(rows.length/2)].UTCForecastHour)-12*3600000);
+  return index===0?"Tonight":fmtNightDate(evening.toISOString(),timeZone);
+}
+// Hourly values are samples; never extend a window beyond its last dark sample.
+function windowEnd(rows,best){return rows[best.end]?.UTCForecastHour||null}
+
 function renderOutlook(nights,timeZone){
   const threshold=alertThresholdFor();
   $("outlookSub").textContent=`${nights.length} upcoming ${nights.length===1?"night":"nights"} available · ${threshold.label} alert threshold (${threshold.score}+)`;
   $("nightOutlook").innerHTML=nights.map((rows,index)=>{
     const summary=summaryForNight(rows,moonForNight(index));
-    const status=colorForScore(summary.score);
-    const verdict=verdictForScore(summary.score)[0];
-    const label=index===0?"Tonight":fmtNightDate(rows[0].UTCForecastHour,timeZone);
+    const hasAstronomy=rows.some(row=>row.Cloud||row.Transparency);
+    const weather=weatherSummaryForRows(rows);
+    const operational=operationalVerdict(summary.score,weather,state.forecastStale||state.weatherStale)[0];
+    const verdict=operational==="UNKNOWN"?(hasAstronomy?"INCOMPLETE":"WEATHER ONLY"):operational;
+    const status=verdict==="NO-GO"?COLORS.red:["STALE","CHECK WEATHER"].includes(verdict)?"#8b9bb0":colorForScore(summary.score);
+    const label=nightLabelFor(rows,index,timeZone);
     const start=rows[summary.best.start]?.UTCForecastHour;
-    const end=rows[summary.best.end]?.UTCForecastHour;
-    const windowText=summary.best.len>1
-      ?`${summary.best.len} hr · ${fmtTime(start,timeZone)}–${fmtTime(end,timeZone)}`
+    const end=windowEnd(rows,summary.best);
+    const windowText=!Number.isFinite(summary.score)?weather?.watch||"Astronomy unavailable":summary.best.len>1
+      ?`${summary.best.len-1} hr · ${fmtTime(start,timeZone)}–${fmtTime(end,timeZone)}`
       :`Best hour · ${fmtTime(start,timeZone)}`;
-    return`<button class="night-option" type="button" data-night-index="${index}" aria-pressed="${index===state.selectedNightIndex}" style="--night-status:${status}"><span class="night-date">${label}</span><span class="night-score">${Math.round(summary.score)}</span><span class="night-verdict">${verdict}</span><span class="night-window">${windowText}</span></button>`;
+    const horizon=index<2?"Near term":index<4?"Planning":"Watch";
+    return`<button class="night-option" type="button" data-night-index="${index}" aria-pressed="${index===state.selectedNightIndex}" style="--night-status:${status}"><span class="night-date">${label} · ${horizon}</span><span class="night-score">${scoreText(summary.score)}</span><span class="night-verdict">${verdict}</span><span class="night-window">${windowText}</span></button>`;
   }).join("");
 }
 
@@ -773,7 +708,7 @@ function renderWeatherAndPlan(rows,timeZone,components,moon){
     $("weatherRain").textContent=weather.rain===null?"—":`${Math.round(weather.rain)}%`;
     const watchTime=weather.watchTime?fmtTime(new Date(weatherTimeMs(weather.watchTime)).toISOString(),timeZone):"";
     $("weatherWatch").textContent=`${weather.watch}${watchTime?` · ${watchTime}`:""}`;
-    const watchColor=weather.severity==="danger"?COLORS.red:weather.severity==="watch"?COLORS.yellow:COLORS.green;
+    const watchColor=state.weatherStale||weather.severity==="unknown"?"#8b9bb0":weather.severity==="danger"?COLORS.red:weather.severity==="watch"?COLORS.yellow:COLORS.green;
     $("weatherWatch").style.color=watchColor;
     $("weatherStrip").style.borderLeft=`4px solid ${watchColor}`;
 
@@ -781,14 +716,14 @@ function renderWeatherAndPlan(rows,timeZone,components,moon){
     if(weather.visibilityMiles!==null)diagnostic.push(`Visibility ${weather.visibilityMiles.toFixed(weather.visibilityMiles<10?1:0)} mi`);
     if(weather.gust!==null)diagnostic.push(`Gusts to ${Math.round(weather.gust)} mph`);
     if(weather.aqi!==null)diagnostic.push(`Air quality index ${Math.round(weather.aqi)}`);
-    if(components.transparency<48&&weather.visibilityMiles!==null){
+    if(Number.isFinite(components.transparency)&&components.transparency<48&&weather.visibilityMiles!==null){
       diagnostic.push(weather.visibilityMiles<6
         ?"Reduced surface visibility may be contributing to poor transparency"
         :"Surface visibility looks normal; elevated haze, moisture, or the astronomy model may explain poor transparency");
     }
     const note=$("weatherNote");
     const source=state.weather?.meta||{label:"Supplemental weather source",url:"#"};
-    const prefix=[state.weatherNotice,...diagnostic].filter(Boolean).join(" · ");
+    const prefix=[state.weatherStale?"STALE — last saved weather; refresh failed":null,`Retrieved ${fmtUpdated(source.fetchedAt)}`,state.weatherNotice,state.weatherError,...diagnostic].filter(Boolean).join(" · ");
     note.replaceChildren();
     if(prefix)note.append(`${prefix} · `);
     const link=document.createElement("a");
@@ -805,9 +740,7 @@ function renderWeatherAndPlan(rows,timeZone,components,moon){
     $("weatherWatch").textContent="Unavailable";
     $("weatherWatch").style.color="var(--muted)";
     $("weatherStrip").style.borderLeft="1px solid var(--line)";
-    $("weatherNote").textContent=state.weatherError
-      ?"Supplemental weather is temporarily unavailable. The Astrospheric score is unaffected."
-      :"No supplemental weather overlaps this selected night. The Astrospheric score is unaffected.";
+    $("weatherNote").textContent=state.weatherError||"No weather forecast overlaps this selected night.";
   }
 
   const filter=filterRecommendation({
@@ -823,12 +756,44 @@ function renderWeatherAndPlan(rows,timeZone,components,moon){
   $("prepareLine").textContent=`Prepare: ${preparationGuidance(weather,components).join(" · ")}`;
 }
 
+function operationalVerdict(score,weather,stale=false){
+  if(stale)return["STALE","Refresh conditions before setup"];
+  if(weather?.severity==="danger")return["NO-GO",weather.watch];
+  if(!Number.isFinite(score))return["UNKNOWN","Astronomy assessment incomplete"];
+  if(!weather||weather.complete===false||weather.severity==="unknown")return["CHECK WEATHER","Weather assessment incomplete"];
+  return verdictForScore(score);
+}
+
 function render(){
-  const forecast=state.forecast;
+  const expired=time=>Number.isFinite(Date.parse(time))&&Date.now()-Date.parse(time)>3*3600000;
+  if(expired(state.forecast?.meta?.fetchedAt))state.forecastStale=true;
+  if(expired(state.weather?.meta?.fetchedAt))state.weatherStale=true;
+  const forecast=state.forecast||{};
   const location=activeLocation();
-  const timeZone=forecast.TimeZone||"America/Detroit";
+  if(!location)return;
+  const timeZone=forecast.TimeZone||location.timeZone||Intl.DateTimeFormat().resolvedOptions().timeZone;
   const nights=availableNights();
-  if(!nights.length)throw new Error("No forecast data returned for this location.");
+  $("headerSub").textContent=`${location.name} · Forecast retrieved ${fmtUpdated()}`;
+  renderQuickLocationSelect();
+  renderDiagnostics();
+  const failed=Object.values(state.providerStatus).filter(p=>p.status==="failed"&&!p.id.startsWith("foreca")&&!p.id.includes("air"));
+  $("dataNotice").textContent=[state.forecastStale?"Astronomy: saved forecast, not refreshed.":null,state.weatherStale?"Weather: saved forecast, not refreshed.":null,...failed.map(p=>p.error.message),state.storageNotice].filter(Boolean).join(" ");
+  $("dataNotice").classList.toggle("hidden",!$("dataNotice").textContent);
+  if(!nights.length){
+    $("statusBadge").textContent="UNKNOWN";$("statusTitle").textContent="No usable night forecast";
+    $("statusCopy").textContent=hourlyRows().length?"No astronomical or nautical darkness is available in this forecast. Weather data remains in diagnostics.":"Waiting for provider data. If a request fails, its status appears in diagnostics.";
+    for(const id of["scoreRing","bestWindow","bestWindowTime","nightChip","moonValue","moonStatus","moonDetail","dewValue","dewStatus","dewDetail","filterValue","filterReason","prepareLine","weatherNow","weatherLow","weatherRain","weatherWatch"])$(id).textContent="—";
+    for(const id of["metricGrid","nightOutlook","timeline","scoreDetails"])$(id).replaceChildren();
+    for(const id of["hero","statusBadge","scoreRing"])$(id).style.setProperty("--status","#8b9bb0");
+    $("locationLabel").textContent=location.name;
+    $("bortleRef").classList.add("hidden");
+    $("outlookSub").textContent="No upcoming dark window available.";
+    $("weatherNote").textContent=state.weatherError||"Weather forecast not yet available for a dark window.";
+    $("footer").textContent=`AstroImageNow ${APP_VERSION}`;
+    return;
+  }
+  const selected=nights.findIndex(rows=>nightKey(rows,timeZone)===state.settings.selectedNightKey);
+  if(selected>=0)state.selectedNightIndex=selected;
   state.selectedNightIndex=clamp(state.selectedNightIndex,0,nights.length-1);
 
   const rows=darkRows();
@@ -838,9 +803,10 @@ function render(){
   const center=summary.center;
   const components=summary.components;
   const overall=summary.score;
-  const [verdict,title]=verdictForScore(overall);
-  const status=colorForScore(overall);
-  const nightLabel=state.selectedNightIndex===0?"Tonight":fmtNightDate(rows[0].UTCForecastHour,timeZone);
+  const weather=weatherSummaryForRows(rows);
+  const [verdict,title]=operationalVerdict(overall,weather,state.forecastStale||state.weatherStale);
+  const status=verdict==="NO-GO"?COLORS.red:verdict==="STALE"||verdict==="CHECK WEATHER"?"#8b9bb0":colorForScore(overall);
+  const nightLabel=nightLabelFor(rows,state.selectedNightIndex,timeZone);
   const darknessLabel=state.darknessThreshold===-18?"Astronomical darkness":state.darknessThreshold===-12?"Nautical-darkness fallback":"Available forecast hours";
 
   $("hero").style.setProperty("--status",status);
@@ -848,13 +814,11 @@ function render(){
   $("scoreRing").style.setProperty("--status",status);
   $("statusBadge").textContent=verdict;
   $("statusTitle").textContent=title;
-  $("scoreRing").textContent=Math.round(overall);
+  $("scoreRing").textContent=scoreText(overall);
   $("locationLabel").textContent=`${location.name} · ${nightLabel}`;
   $("bortleRef").textContent=location.bortle?`Bortle ${location.bortle}`:"";
   $("bortleRef").classList.toggle("hidden",!location.bortle);
   $("nightChip").textContent=`${darknessLabel}: ${fmtTime(rows[0].UTCForecastHour,timeZone)} → ${fmtTime(rows[rows.length-1].UTCForecastHour,timeZone)}`;
-  $("headerSub").textContent=`${location.name} · Updated ${fmtUpdated()}`;
-  renderQuickLocationSelect();
 
   const reasons=[];
   const limits=[];
@@ -862,11 +826,7 @@ function render(){
   if(components.transparency>=80)reasons.push("strong transparency");
   if(components.seeing>=80)reasons.push("good seeing");
   if(components.wind>=80)reasons.push("light wind");
-  if(components.cloud<48)limits.push("cloud cover");
-  if(components.transparency<48)limits.push("poor transparency");
-  if(components.wind<48)limits.push("wind");
-  if(components.dew<48)limits.push("dew");
-  if(components.seeing<48)limits.push("seeing");
+  for(const[key,label]of[["cloud","cloud cover"],["transparency","poor transparency"],["wind","wind"],["dew","dew"],["seeing","seeing"]])if(Number.isFinite(components[key])&&components[key]<48)limits.push(label);
   if(!reasons.length&&!limits.length)reasons.push("mixed but workable conditions");
 
   $("statusCopy").textContent=verdict==="GO"
@@ -874,23 +834,28 @@ function render(){
     :verdict==="MARGINAL"
       ?`Conditions are mixed.${limits.length?" Main limitation: "+limits.join(", ")+".":""} A shorter or lower-risk session may still be worthwhile.`
       :`Conditions are currently poor enough that a full imaging setup is unlikely to pay off.${limits.length?" Main limitation: "+limits.join(", ")+".":""}`;
+  if(verdict==="UNKNOWN")$("statusCopy").textContent="Available weather and individual astronomy metrics are shown below. Missing astronomy or Moon data prevents a complete imaging score.";
+  if(verdict==="STALE")$("statusCopy").textContent="These are previously saved conditions. Do not use them as a current go-ahead until refreshed.";
+  if(verdict==="CHECK WEATHER")$("statusCopy").textContent="The astronomy score is available, but weather hazards could not be fully assessed. Check current conditions before setup.";
+  if(weather?.severity==="danger"&&!state.weatherStale)$("statusCopy").textContent=`${weather.watch} is forecast during this night. The ring shows the astronomy score; the operational verdict accounts for this weather hazard.`;
 
   const startIso=rows[best.start]?.UTCForecastHour;
-  const endIso=rows[best.end]?.UTCForecastHour;
-  $("bestWindow").textContent=best.len>1?`${best.len} hr green window`:"Best dark hour";
-  $("bestWindowTime").textContent=best.len>1
+  const endIso=windowEnd(rows,best);
+  $("bestWindow").textContent=!Number.isFinite(overall)?"Not assessed":best.len>1?`${best.len-1} hr imaging window`:"Best dark hour";
+  $("bestWindowTime").textContent=!Number.isFinite(overall)?"Astronomy detail unavailable":best.len>1
     ?`${fmtTime(startIso,timeZone)} → ${fmtTime(endIso,timeZone)}`
     :fmtTime(startIso,timeZone);
-  $("windowMarker").style.left=`${best.score}%`;
+  $("windowMarker").style.left=`${best.score??0}%`;
+  $("windowMarker").classList.toggle("hidden",!Number.isFinite(best.score));
 
   const cloudValue=seriesValue("Cloud",center);
   const transparencyValue=seriesValue("Transparency",center);
   const seeingValue=seriesValue("Seeing",center);
   const windValue=windToMph(seriesValue("Wind",center));
   const metricData=[
-    ["Cloud",`${Math.round(cloudValue)}%`,components.cloud,"cloud"],
+    ["Cloud",cloudValue==null?"—":`${Math.round(cloudValue)}%`,components.cloud,"cloud"],
     ["Transparency",transparencyValue==null?"—":`${Number(transparencyValue).toFixed(0)}`,components.transparency,"transparency"],
-    ["Seeing",`${Number(seeingValue).toFixed(0)} / 5`,components.seeing,"seeing"],
+    ["Seeing",seeingValue==null?"—":`${Number(seeingValue).toFixed(0)} / 5`,components.seeing,"seeing"],
     ["Wind",windValue==null?"—":`${windValue.toFixed(1)} mph`,components.wind,"wind"]
   ];
   $("metricGrid").innerHTML=metricData.map(([name,value,score,info])=>
@@ -901,8 +866,8 @@ function render(){
   $("nightDetailTitle").textContent=`${nightLabel} at a glance`;
 
   const timelineRows=[
-    ["Overall",index=>overallAt(index),index=>`Score ${Math.round(overallAt(index))}`],
-    ["Cloud",index=>cloudScore(seriesValue("Cloud",index)),index=>`${Math.round(seriesValue("Cloud",index))}% cloud`],
+    ["Overall",index=>overallAt(index),index=>`Score ${scoreText(overallAt(index))}`],
+    ["Cloud",index=>cloudScore(seriesValue("Cloud",index)),index=>`${scoreText(seriesValue("Cloud",index))}% cloud`],
     ["Transparency",index=>transparencyScore(seriesValue("Transparency",index)),index=>`Value ${seriesValue("Transparency",index)}`],
     ["Seeing",index=>seeingScore(seriesValue("Seeing",index)),index=>`${seriesValue("Seeing",index)}/5`],
     ["Dew risk",index=>dewScore(seriesValue("Temperature",index),seriesValue("DewPoint",index)),index=>{
@@ -923,14 +888,14 @@ function render(){
   $("moonValue").textContent=moon?`${illumination.toFixed(0)}% illuminated`:"Unavailable";
   $("moonStatus").style.color=colorForScore(moonConditionScore);
   $("moonStatus").textContent=moon?(moon.IsAboveHorizon?"Moon above horizon":"Moon below horizon"):"Moon data unavailable";
-  $("moonDetail").textContent=moon?`Altitude ${Number(moon.Altitude||0).toFixed(0)}°`:"";
+  $("moonDetail").textContent=moon?`Mid-night snapshot · ${fmtTime(moon.TimeUTC,timeZone)}${Number.isFinite(moon.Altitude)?` · ${moon.Altitude.toFixed(0)}°`:""}`:"";
 
   const dewMargin=dewMarginF(seriesValue("Temperature",center),seriesValue("DewPoint",center));
   $("dewCard").style.borderLeft=`4px solid ${colorForScore(components.dew)}`;
   $("dewValue").textContent=dewMargin==null?"—":`${dewMargin.toFixed(1)}°F`;
   $("dewStatus").style.color=colorForScore(components.dew);
   $("dewStatus").textContent=conditionText(components.dew>=65?"GO":"WATCH",components.dew);
-  $("dewDetail").textContent=components.dew<65?"Run dew control from setup.":"Comfortable margin at the best imaging window.";
+  $("dewDetail").textContent=components.dew===null?"Dew assessment unavailable.":components.dew<65?"Run dew control from setup.":"Comfortable margin at the best imaging window.";
   renderWeatherAndPlan(rows,timeZone,components,moon);
 
   const detailEntries=[
@@ -942,82 +907,127 @@ function render(){
     ["Moon context",components.moon]
   ];
   $("scoreDetails").innerHTML=detailEntries.map(([name,score])=>
-    `<div class="score-item"><div class="score-head"><span>${name}</span><strong>${Math.round(score)}</strong></div><div class="small-scale"><span class="small-marker" style="left:${score}%"></span></div></div>`
+    `<div class="score-item"><div class="score-head"><span>${name}</span><strong>${scoreText(score)}</strong></div><div class="small-scale"><span class="small-marker ${Number.isFinite(score)?"":"hidden"}" style="left:${score??0}%"></span></div></div>`
   ).join("");
 
-  const credits=forecast.APICreditsRemaining??forecast.APICreditsRemainingToday??"—";
-  $("footer").textContent=`Selected-night astronomical scoring · Astrospheric model ${forecast.ModelTime||"—"} · API credits remaining ${credits}`;
+  const creditRecords=Object.values(state.providerStatus).filter(record=>Number.isFinite(record.creditsRemaining));
+  const credits=creditRecords.length?Math.min(...creditRecords.map(r=>r.creditsRemaining)):"—";
+  $("footer").textContent=`AstroImageNow ${APP_VERSION} · Astronomy score uses capped hourly values · Model ${forecast.ModelTime||"unavailable"} · API credits remaining ${credits}`;
 }
 
-async function fetchNightMoons(common){
-  const nights=availableNights();
-  const moons=[];
-  for(const rows of nights){
-    const middleRow=rows[Math.floor(rows.length/2)];
-    try{
-      moons.push(await api("Moon",{...common,Time:middleRow.UTCForecastHour}));
-    }catch(error){
-      moons.push(null);
-      state.diagnostic+=`\n\nMOON LOOKUP ERROR (${middleRow.UTCForecastHour})\n${error.message}`;
-    }
-  }
-  return moons;
+function contextFor(settings=state.settings){
+  const location=activeLocation();
+  return JSON.stringify([location?.id,location?.lat,location?.lon,settings?.weatherSource]);
+}
+
+function readSnapshot(context){
+  try{
+    const data=JSON.parse(localStorage.getItem(SNAPSHOT_KEY)||"null");
+    return data?.version===1&&data.context===context?data:null;
+  }catch{return null}
+}
+
+function saveSnapshot(){
+  if(!state.forecast&&!state.weather)return;
+  const data={version:1,context:state.dataContext,forecast:state.forecast,weather:state.weather,moons:state.moons,providerStatus:state.providerStatus,fetchedAt:state.fetchedAt};
+  state.lastGood=data;
+  try{localStorage.setItem(SNAPSHOT_KEY,JSON.stringify(data))}catch{state.storageNotice="Forecast could not be saved on this device."}
+}
+
+function diagnosticSummary(){
+  return{
+    appVersion:APP_VERSION,
+    serviceWorker:{controlled:typeof navigator!=="undefined"&&!!navigator.serviceWorker?.controller,waiting:!!state.swRegistration?.waiting},
+    configuredWeatherSource:state.settings?.weatherSource,
+    weatherProvider:state.weather?.meta?.provider||null,
+    astronomyStale:state.forecastStale,
+    weatherStale:state.weatherStale,
+    providers:Object.values(state.providerStatus).map(record=>({id:record.id,status:record.status,fetchedAt:record.fetchedAt||null,coverage:record.coverage||null,modelTime:record.modelTime||null,creditCost:record.creditCost??null,creditsRemaining:record.creditsRemaining??null,error:record.error?{code:record.error.code,httpStatus:record.error.httpStatus,message:record.error.message}:null})),
+    storageNotice:state.storageNotice||null
+  };
+}
+
+function renderDiagnostics(){
+  state.diagnostic=JSON.stringify(diagnosticSummary(),null,2);
+  $("diagBox").textContent=state.diagnostic;
+  $("diagWrap").classList.remove("hidden");
 }
 
 async function refresh(){
-  $("dashboard").classList.add("loading");
-  $("errorBox").classList.add("hidden");
-  $("diagWrap").classList.add("hidden");
-  $("diagBox").classList.add("hidden");
-  state.diagnostic="";
-  state.weather=null;
+  const id=++state.refreshId;
+  state.refreshController?.abort();
+  const controller=new AbortController();
+  state.refreshController=controller;
+  const settings={...state.settings};
+  const location={...activeLocation()};
+  const contextKey=contextFor(settings);
+  const saved=state.dataContext===contextKey?state.lastGood:readSnapshot(contextKey);
+  state.dataContext=contextKey;
+  state.forecast=saved?.forecast||null;
+  state.weather=saved?.weather||null;
+  state.moons=saved?.moons||[];
+  state.fetchedAt=saved?.fetchedAt||null;
+  state.forecastStale=!!state.forecast;
+  state.weatherStale=!!state.weather;
+  state.providerStatus={};
   state.weatherError="";
   state.weatherNotice="";
+  $("refreshBtn").disabled=true;
+  $("refreshBtn").textContent="Refreshing…";
+  $("errorBox").classList.add("hidden");
+  const current=()=>id===state.refreshId&&!controller.signal.aborted;
+  const context={signal:controller.signal,onStatus:record=>{if(current()){state.providerStatus[record.id]=record;renderDiagnostics()}}};
+  const common={Latitude:location.lat,Longitude:location.lon};
+  render();
   try{
-    const location=activeLocation();
-    if(!location)throw new Error("Select a valid observing location.");
-    const common={Latitude:location.lat,Longitude:location.lon};
-    const forecastOptions={...common,ForecastLength:168,PrettyPrint:true};
-    const weatherPromise=fetchSupplementalWeather(location).catch(error=>{
-      state.weatherError=error.message;
-      return null;
+    const weatherTask=Providers.capture("weather",()=>fetchSupplementalWeather(location,settings,context),context).then(result=>{
+      if(!current())return;
+      if(result.data){
+        state.weather=result.data;state.weatherStale=false;
+        state.weatherNotice=[result.data.meta.notice,...(result.data.meta.notices||[])].filter(Boolean).join(" ");
+        state.fetchedAt=result.record.fetchedAt;
+      }else state.weatherError=result.record.error.message;
+      render();
     });
-    const core=await api("GetForecastData",{
-      ...forecastOptions,
-      Variables:["Cloud","Seeing","Temperature"]
+    const astronomyTask=Promise.all([
+      ["astronomy-core",["Cloud","Seeing","Temperature"]],
+      ["astronomy-extra",["Transparency","DewPoint","Wind"]]
+    ].map(([name,variables])=>Providers.capture(name,async()=>Providers.normalizeAstronomy(await Providers.astronomy("GetForecastData",{...common,ForecastLength:168,Variables:variables},settings.apiKey,context),variables),context))).then(results=>{
+      if(!current())return;
+      const data=Providers.mergeAstronomy(results[0].data,results[1].data);
+      if(data){
+        data.meta.fetchedAt=results.filter(r=>r.data).map(r=>r.record.fetchedAt).sort().at(-1);
+        state.forecast=data;state.forecastStale=false;state.moons=[];state.fetchedAt=data.meta.fetchedAt;
+      }
+      render();
     });
-    state.diagnostic="CORE FORECAST RESPONSE\n"+JSON.stringify(core,null,2);
-    if(!(core&&typeof core==="object"&&Array.isArray(core.HourlyForecast)&&core.HourlyForecast.length>0)){
-      throw new Error(`Astrospheric did not return HourlyForecast data for ${location.lat}, ${location.lon}.`);
+    await Promise.all([weatherTask,astronomyTask]);
+    if(!current())return;
+    if(state.forecast&&!state.forecastStale){
+      const nights=availableNights();
+      const moons=[];
+      for(const rows of nights){
+        if(!current())return;
+        if(!rows.some(row=>row.Cloud||row.Transparency)){moons.push(null);continue}
+        const middle=rows[Math.floor(rows.length/2)];
+        const result=await Providers.capture(`moon-${nightKey(rows,state.forecast.TimeZone)}`,async()=>{
+          const data=await Providers.astronomy("Moon",{...common,Time:middle.UTCForecastHour},settings.apiKey,context);
+          if(typeof data.IsAboveHorizon!=="boolean"||Providers.number(data.IlluminationPercent,0,100)===null)throw new Providers.ProviderError("Astrospheric Moon","schema");
+          return{IsAboveHorizon:data.IsAboveHorizon,IlluminationPercent:data.IlluminationPercent,Altitude:Providers.number(data.Altitude,-90,90),TimeUTC:data.TimeUTC||middle.UTCForecastHour,APICreditCostOfCall:Providers.number(data.APICreditCostOfCall,0),APICreditsRemaining:Providers.number(data.APICreditsRemaining,0)};
+        },context);
+        moons.push(result.data);
+      }
+      if(!current())return;
+      state.moons=moons;
     }
-
-    const extra=await api("GetForecastData",{
-      ...forecastOptions,
-      Variables:["Transparency","DewPoint","Wind"]
-    });
-    state.diagnostic+="\n\nEXTRA FORECAST RESPONSE\n"+JSON.stringify(extra,null,2);
-    const extraByTime=new Map((extra.HourlyForecast||[]).map(row=>[row.UTCForecastHour,row]));
-    const mergedHourly=(core.HourlyForecast||[]).map(row=>({
-      ...row,
-      ...(extraByTime.get(row.UTCForecastHour)||{})
-    }));
-    state.forecast={...core,...extra,HourlyForecast:mergedHourly};
-    state.weather=await weatherPromise;
-    if(state.weatherError)state.diagnostic+=`\n\nSUPPLEMENTAL WEATHER ERROR\n${state.weatherError}`;
-    state.selectedNightIndex=0;
-
-    state.moons=await fetchNightMoons(common);
-    state.sun=await api("RiseSet",{...common,Object:"Sun",Days:7});
-    state.diagnostic+="\n\nNIGHT MOON RESPONSES\n"+JSON.stringify(state.moons,null,2)+"\n\nSUN RESPONSE\n"+JSON.stringify(state.sun,null,2)+"\n\nSUPPLEMENTAL WEATHER RESPONSE\n"+JSON.stringify(state.weather,null,2);
-    render();
+    if(state.forecast&&!state.forecastStale||state.weather&&!state.weatherStale)saveSnapshot();
   }catch(error){
-    $("errorBox").textContent=error.message;
-    $("errorBox").classList.remove("hidden");
-    $("diagWrap").classList.remove("hidden");
-    const location=activeLocation();
-    state.diagnostic=`REQUESTED LOCATION\n${location?.lat??"—"}, ${location?.lon??"—"}\n\n${state.diagnostic||""}\n\nERROR\n${error.stack||error.message||error}`;
+    if(current()){$("errorBox").textContent="Refresh could not finish. Open diagnostics for provider status.";$("errorBox").classList.remove("hidden")}
   }finally{
-    $("dashboard").classList.remove("loading");
+    if(current()){
+      $("refreshBtn").disabled=false;$("refreshBtn").textContent="Refresh";
+      render();renderDiagnostics();
+    }
   }
 }
 
@@ -1105,9 +1115,9 @@ function showSetup(){
     state.editingLocationId=null;
     renderSavedLocationSelect();
     fillLocationForm({
-      name:"Bellaire, Michigan",
-      lat:44.98028,
-      lon:-85.21117,
+      name:"Home",
+      lat:"",
+      lon:"",
       bortle:null,
       alertThreshold:"yellow"
     });
@@ -1129,8 +1139,8 @@ function initialize(){
     const location={
       id:state.editingLocationId||createLocationId(),
       name:$("locationName").value.trim()||"Observing location",
-      lat:Number($("lat").value),
-      lon:Number($("lon").value),
+      lat:Providers.number($("lat").value,-90,90),
+      lon:Providers.number($("lon").value,-180,180),
       bortle:normalizeBortle($("bortle").value),
       alertThreshold:ALERT_THRESHOLDS[Number($("alertThreshold").value)]?.id||"yellow"
     };
@@ -1154,12 +1164,13 @@ function initialize(){
     if(existingIndex>=0)locations[existingIndex]=location;
     else locations.push(location);
     saveSettings({
-      version:4,
+      version:5,
       apiKey,
       forecaToken,
       weatherSource,
       targetType:state.settings?.targetType||"emission",
       activeLocationId:location.id,
+      selectedNightKey:state.settings?.selectedNightKey,
       locations
     });
     state.editingLocationId=location.id;
@@ -1228,17 +1239,9 @@ function initialize(){
     button.textContent="Locating…";
     button.disabled=true;
     try{
-      const response=await fetch(`${API_BASE}/IpLookup`,{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({APIKey:apiKey})
-      });
-      let data={};
-      try{data=await response.json()}catch{}
-      if(!response.ok)throw new Error(data.ErrorInfo||`Astrospheric returned HTTP ${response.status}`);
-      if(data.ErrorInfo)throw new Error(data.ErrorInfo);
-      const latitude=Number(data.Latitude);
-      const longitude=Number(data.Longitude);
+      const data=await Providers.astronomy("IpLookup",{},apiKey);
+      const latitude=Providers.number(data.Latitude,-90,90);
+      const longitude=Providers.number(data.Longitude,-180,180);
       if(!Number.isFinite(latitude)||!Number.isFinite(longitude)){
         throw new Error("Astrospheric could not determine an approximate location from this connection.");
       }
@@ -1258,6 +1261,8 @@ function initialize(){
     const button=event.target.closest("[data-night-index]");
     if(!button)return;
     state.selectedNightIndex=Number(button.dataset.nightIndex);
+    const rows=availableNights()[state.selectedNightIndex]||[];
+    saveSettings({...state.settings,selectedNightKey:nightKey(rows,state.forecast?.TimeZone||activeLocation()?.timeZone||Intl.DateTimeFormat().resolvedOptions().timeZone)});
     render();
   });
 
@@ -1266,35 +1271,25 @@ function initialize(){
     $("diagBox").classList.toggle("hidden");
   });
 
-  $("testKnownBtn").addEventListener("click",async()=>{
-    const button=$("testKnownBtn");
-    const prior=button.textContent;
-    button.textContent="Testing…";
-    button.disabled=true;
+  $("checkUpdateBtn").addEventListener("click",async()=>{
     try{
-      const data=await api("GetForecastData",{
-        Latitude:39.03,
-        Longitude:-110.32,
-        Variables:["Cloud","Seeing","Temperature"],
-        ForecastLength:24,
-        PrettyPrint:true
-      });
-      state.diagnostic+="\n\nKNOWN-GOOD ASTROSPHERIC EXAMPLE SITE (39.03, -110.32)\n"+JSON.stringify(data,null,2);
-      $("diagBox").textContent=state.diagnostic;
-      $("diagBox").classList.remove("hidden");
-    }catch(error){
-      state.diagnostic+="\n\nKNOWN-GOOD SITE TEST ERROR\n"+(error.stack||error.message||error);
-      $("diagBox").textContent=state.diagnostic;
-      $("diagBox").classList.remove("hidden");
-    }finally{
-      button.textContent=prior;
-      button.disabled=false;
-    }
+      await state.swRegistration?.update();
+      $("updateNotice").classList.remove("hidden");
+      $("updateMessage").textContent=state.swRegistration?.waiting?"An app update is ready. Apply when you are ready to reload.":"Update check complete. No waiting update was found.";
+      $("applyUpdateBtn").classList.toggle("hidden",!state.swRegistration?.waiting);
+    }catch{$("updateNotice").classList.remove("hidden");$("updateMessage").textContent="Could not check for an update. Try again when online."}
+    renderDiagnostics();
+  });
+  $("applyUpdateBtn").addEventListener("click",()=>{
+    const worker=state.swRegistration?.waiting;
+    if(!worker)return;
+    navigator.serviceWorker.addEventListener("controllerchange",()=>window.location.reload(),{once:true});
+    worker.postMessage({type:"APPLY_UPDATE"});
   });
 
   $("quickLocationSelect").addEventListener("change",event=>{
     if(!state.settings?.locations?.some(location=>location.id===event.target.value))return;
-    saveSettings({...state.settings,activeLocationId:event.target.value});
+    saveSettings({...state.settings,activeLocationId:event.target.value,selectedNightKey:null});
     state.selectedNightIndex=0;
     refresh();
   });
@@ -1304,9 +1299,21 @@ function initialize(){
   state.settings=storedSettings();
   if(state.settings)openDashboard();
   else showSetup();
+  document.addEventListener("visibilitychange",()=>{if(!document.hidden&&state.settings)render()});
+  setInterval(()=>{if(!document.hidden&&state.settings)render()},60000);
 
   if("serviceWorker"in navigator&&location.protocol.startsWith("http")){
-    navigator.serviceWorker.register("./sw.js").catch(()=>{});
+    navigator.serviceWorker.register("./sw.js").then(registration=>{
+      state.swRegistration=registration;
+      const announce=()=>{
+        if(!registration.waiting)return;
+        $("updateMessage").textContent="An app update is ready. Your saved settings will be kept.";
+        $("updateNotice").classList.remove("hidden");
+        $("applyUpdateBtn").classList.remove("hidden");
+      };
+      announce();
+      registration.addEventListener("updatefound",()=>registration.installing?.addEventListener("statechange",announce));
+    }).catch(()=>{state.storageNotice="Offline app installation is unavailable in this browser."});
   }
 }
 
@@ -1315,6 +1322,14 @@ if(typeof window!=="undefined"&&typeof document!=="undefined")initialize();
 if(typeof module!=="undefined"){
   module.exports={
     state,
+    refresh,
+    render,
+    diagnosticSummary,
+    operationalVerdict,
+    contextFor,
+    nightKey,
+    windowEnd,
+    APP_VERSION,
     ALERT_THRESHOLDS,
     TARGET_TYPES,
     normalizeBortle,

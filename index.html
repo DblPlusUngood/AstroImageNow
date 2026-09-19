@@ -66,9 +66,9 @@
       border-top-color:var(--night-status);
       box-shadow:0 0 0 2px rgba(138,161,187,.22);
     }
-    .night-date{font-size:12px;color:var(--muted);white-space:nowrap}
+    .night-date{font-size:12px;color:var(--muted);line-height:1.4}
     .night-score{font-size:28px;font-weight:800;line-height:1;margin:8px 0 5px}
-    .night-verdict{font-size:12px;font-weight:800;color:var(--night-status);white-space:nowrap}
+    .night-verdict{font-size:12px;font-weight:800;color:var(--night-status)}
     .night-window{font-size:11px;color:#c9d8e8;line-height:1.35;margin-top:7px}
     .bortle-ref{
       display:inline-block;
@@ -125,6 +125,8 @@
       .profile-toolbar{grid-template-columns:1fr}
       .quick-location{max-width:100%;width:100%}
     }
+    #statusBadge{max-width:100%;white-space:normal}
+    .top-actions{flex-wrap:wrap}
     .label-row{display:flex;align-items:center;gap:6px;min-width:0}
     .info-button{
       width:19px;
@@ -190,14 +192,14 @@
     <div class="field"><label for="apiKey">Astrospheric API key</label><input id="apiKey" type="password" autocomplete="off" placeholder="Paste API key" /></div>
     <div class="provider-fields">
       <div class="field"><label for="weatherSource">Weather source</label><select id="weatherSource"><option value="foreca-fallback">Foreca with Open-Meteo backup</option><option value="foreca">Foreca only</option><option value="open-meteo">Open-Meteo only</option></select></div>
-      <div class="field" id="forecaTokenField"><label for="forecaToken">Foreca API token</label><input id="forecaToken" type="password" autocomplete="off" placeholder="Paste Foreca token" /></div>
+      <div class="field" id="forecaTokenField"><label for="forecaToken">Foreca API token</label><input id="forecaToken" type="password" autocomplete="off" placeholder="Paste Foreca token" /><p class="sub">Use your current Foreca Weather API token. It is sent only to weatherapi.foreca.net.</p></div>
     </div>
     <div class="profile-toolbar">
       <div class="field"><label for="savedLocationSelect">Saved location</label><select id="savedLocationSelect"></select></div>
       <div class="setup-actions"><button class="btn" id="newLocation" type="button">Add location</button><button class="btn danger" id="deleteLocation" type="button">Delete</button></div>
     </div>
-    <div class="field"><label for="locationName">Location name</label><input id="locationName" value="Bellaire, Michigan" /></div>
-    <div class="row2"><div class="field"><label for="lat">Latitude</label><input id="lat" type="number" step="any" value="44.98028" /></div><div class="field"><label for="lon">Longitude</label><input id="lon" type="number" step="any" value="-85.21117" /></div></div>
+    <div class="field"><label for="locationName">Location name</label><input id="locationName" value="Home" /></div>
+    <div class="row2"><div class="field"><label for="lat">Latitude</label><input id="lat" type="number" step="any" value="" /></div><div class="field"><label for="lon">Longitude</label><input id="lon" type="number" step="any" value="" /></div></div>
     <div class="row2">
       <div class="field"><label for="bortle">Bortle class</label><select id="bortle"><option value="">Not set</option><option value="1">Bortle 1</option><option value="2">Bortle 2</option><option value="3">Bortle 3</option><option value="4">Bortle 4</option><option value="5">Bortle 5</option><option value="6">Bortle 6</option><option value="7">Bortle 7</option><option value="8">Bortle 8</option><option value="9">Bortle 9</option></select></div>
       <div class="field threshold-control" id="thresholdControl"><label for="alertThreshold">Alert threshold</label><input id="alertThreshold" type="range" min="0" max="2" step="1" value="0" /><div class="threshold-labels"><span>Yellow</span><span>Lime</span><span>Green</span></div></div>
@@ -207,7 +209,8 @@
   </section>
   <main id="dashboard" class="hidden">
     <header><div><h1>AstroImageNow</h1><div class="sub" id="headerSub">—</div></div><div class="top-actions"><select class="quick-location hidden" id="quickLocationSelect" aria-label="Active observing location"></select><button class="btn" id="refreshBtn">Refresh</button><button class="btn" id="settingsBtn">Settings</button></div></header>
-    <div id="errorBox" class="error hidden"></div><div id="diagWrap" class="hidden"><div class="setup-actions"><button class="btn" id="diagBtn">Show diagnostics</button><button class="btn" id="testKnownBtn">Test Astrospheric example site</button></div><pre id="diagBox" class="diagnostic hidden"></pre></div>
+    <div id="errorBox" class="error hidden"></div><div id="diagWrap" class="hidden"><div class="setup-actions"><button class="btn" id="diagBtn">Show diagnostics</button><button class="btn" id="checkUpdateBtn">Check for app update</button></div><pre id="diagBox" class="diagnostic hidden"></pre></div>
+    <div id="dataNotice" class="notice hidden" role="status"></div><div id="updateNotice" class="notice hidden"><span id="updateMessage"></span> <button class="btn hidden" id="applyUpdateBtn">Apply update &amp; reload</button></div>
     <section class="grid hero-grid"><div class="card hero" id="hero"><div class="hero-row"><div><div class="label label-row"><span id="locationLabel">—</span><span class="bortle-ref hidden" id="bortleRef"></span><button class="info-button" type="button" data-info="bortle" aria-label="About Bortle class">i</button></div><div class="status-line"><span class="badge" id="statusBadge">—</span><span class="status-title" id="statusTitle">Loading…</span></div><div class="hero-copy" id="statusCopy">Retrieving Astrospheric forecast.</div><div class="night-chip" id="nightChip">Finding astronomical darkness…</div></div><div class="score-ring" id="scoreRing">—</div></div></div><div class="card"><div class="label">Best imaging window</div><div class="window" id="bestWindow">—</div><div class="sub" id="bestWindowTime">—</div><div class="scale"><span class="marker" id="windowMarker"></span></div><div class="scale-labels"><span>Poor</span><span>Marginal</span><span>Excellent</span></div></div></section>
     <section class="grid metrics" id="metricGrid"></section>
     <section class="card weather-strip" id="weatherStrip" aria-label="Selected night weather">
@@ -227,6 +230,7 @@
   <div class="info-dialog-head"><h2 id="infoTitle">About this condition</h2><button class="btn dialog-close" id="infoClose" type="button" aria-label="Close">×</button></div>
   <div class="info-dialog-body" id="infoBody"></div>
 </dialog>
+<script src="providers.js"></script>
 <script src="app.js"></script>
 
 </body></html>
