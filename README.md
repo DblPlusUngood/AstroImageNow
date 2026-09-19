@@ -4,13 +4,13 @@ A polished personal dashboard using the official Astrospheric Data API v2.
 
 ## Fastest use
 
-Open `index.html` in a modern browser.
+Open [AstroImageNow](https://dblplusungood.github.io/AstroImageNow/) in a modern browser. For local development, serve the folder over localhost.
 
 On first launch:
 1. Paste your Astrospheric API key.
 2. Choose **Foreca with Open-Meteo backup**, **Foreca only**, or **Open-Meteo only**.
 3. Paste a Foreca token when using a Foreca option. The backup mode works with Open-Meteo until a token is added.
-4. Bellaire, Michigan is preloaded as the default location.
+4. Add your observing locations. First-use setup starts with a blank **Home** profile; no address or coordinates are shipped. Existing saved locations are preserved.
 5. Press **Save & open dashboard**.
 
 The API credentials and weather-source choice are stored in that browser's local storage on that device. They are not embedded in the source files.
@@ -45,6 +45,39 @@ This build is intended for private personal devices. For public/shared hosting, 
 
 The browser sends the exact selected coordinates to Astrospheric for the astronomy forecast. Supplemental weather requests use coordinates rounded to two decimal places. The Astrospheric key is sent only to Astrospheric; the Foreca token is sent only to Foreca. Weather data is provided by [Foreca](https://www.foreca.com/) or [Open-Meteo](https://open-meteo.com/), according to the selected source. Open-Meteo air-quality data incorporates Copernicus Atmosphere Monitoring Service (CAMS) forecasts.
 
+
+## v1.10 — Foreca and forecast reliability
+
+- Uses Foreca Weather API at `weatherapi.foreca.net/api/v1`. The older `pfa.foreca.com` host rejects current Weather API tokens. Current and hourly calls request the full dataset. Precipitation is converted from millimeters to inches before hazard evaluation.
+- Foreca hourly weather remains usable if optional current conditions or air quality fail. Foreca is primary in the default mode; a failure explicitly identifies any Open-Meteo backup. Foreca-only mode never silently switches sources.
+- Forecast and weather requests settle independently, have 12-second timeouts, and cancel on a new refresh/site selection. Invalid or missing values remain unknown. Failed Moon data cannot inflate the score.
+- Up to seven nights are built from actual forecast timestamps. Later nights without astronomy detail are labeled **WEATHER ONLY**. The Near term / Planning / Watch labels indicate increasing forecast distance, not a calibrated probability.
+- The headline and night-card astronomy scores use the same capped hourly values. Significant weather hazards override the operational verdict. Incomplete weather prevents a weather go-ahead.
+- Best-window elapsed duration stops at the last dark hourly sample; the app does not extend it into an unverified hour. Moon context remains one mid-night snapshot, not an hourly Moon/target model.
+- Retrieval timestamps, provider coverage, model time, credits, and sanitized errors are available in diagnostics. Credentials and location coordinates are excluded.
+- One last-used site/source forecast snapshot is saved locally. Failed refreshes and snapshots restored on reload are marked **STALE**; data older than three hours is also marked stale on render. This preserves reference data without presenting it as a fresh setup recommendation.
+- Selected nights persist by local calendar date. Existing API keys, source choices, and sites migrate without being replaced. The current personal configuration is Home and JGAP, with Home active; it remains in the user's browser, not this repository.
+- An update notice and **Check for app update** / **Apply update** controls preserve settings. The service worker caches only this app's shell and removes only this app's obsolete caches.
+
+### Verification and development
+
+Requires Node.js 22 or later; no dependency installation is needed.
+
+```sh
+node --test tests/*.test.js
+node --check app.js
+node --check providers.js
+node --check sw.js
+node tests/visual-server.js
+```
+
+Open `http://127.0.0.1:4173/visual-test` for synthetic provider data. The fixture uses dummy credentials and overwrites settings **only on that localhost origin**. Service-worker registration is stubbed in the fixture; service-worker behavior is separately covered by tests. Open `/` for a normal local installation with its own settings.
+
+### Installed-app update
+
+An existing v1.9 installation does not yet have the new update controls. Close AstroImageNow and any Safari tabs for the app, open it online to let the new version download, then close and reopen it if the footer still shows v1.9. Once on v1.10, use **Check for app update** and **Apply update** when offered. Avoid deleting the app or clearing website data, which can remove saved settings.
+
+Settings are device/browser-local. Saving a new token or Home/JGAP on desktop does not synchronize them to the iPhone Home Screen app. Enter the token in the phone's password field if it still has the old token.
 
 ## v1.3 — API response parser corrected
 
