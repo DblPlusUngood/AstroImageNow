@@ -2,7 +2,7 @@
 
 const Providers=typeof module!=="undefined"?require("./providers.js"):AstroProviders;
 const API_BASE=Providers.ASTRO_BASE;
-const APP_VERSION="1.11.1";
+const APP_VERSION="1.11.2";
 const Planner=typeof module!=="undefined"?require("./planner.js"):TargetPlanner;
 const SNAPSHOT_KEY="astroImageNowLastGoodV1";
 const SETTINGS_KEY="astroImageNowSettings";

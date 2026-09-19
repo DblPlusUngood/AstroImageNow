@@ -90,7 +90,7 @@ node tests/visual-server.js
 
 Open `http://127.0.0.1:4173/visual-test` for synthetic provider data. The fixture uses dummy credentials and overwrites settings **only on that localhost origin**. Service-worker registration is stubbed in the fixture; service-worker behavior is separately covered by tests. Open `/` for a normal local installation with its own settings.
 
-The current suite has 51 tests. Rebuilding the catalog additionally requires Python 3 (`python3 scripts/build-catalog.py`); normal app use and Node tests do not.
+The current suite has 52 tests. Rebuilding the catalog additionally requires Python 3 (`python3 scripts/build-catalog.py`); normal app use and Node tests do not.
 
 v1.11.1 fixes offline reloads from the **Plan targets** section anchor. The worker strips only the URL fragment before looking up the same cached document; provider and unrelated-site requests still bypass it.
 
@@ -168,3 +168,5 @@ the actual API response shape and merges optional variable calls by
 - Adds a session target selector with generic filter guidance for emission, broadband, reflection/dust, and equipment-test plans.
 - Adds concise clothing, dew-control, precipitation, visibility, and wind preparation reminders.
 - Keeps Bortle as neutral per-location metadata. Astrospheric's documented v2 forecast variables do not include Bortle, and v1.9 does not depend on an undocumented light-pollution service.
+
+v1.11.2 makes worker installation fetch fresh shell assets, preventing a rapid update from copying older files out of the browser HTTP cache.
