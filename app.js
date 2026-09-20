@@ -2,7 +2,13 @@
 
 const Providers=typeof module!=="undefined"?require("./providers.js"):AstroProviders;
 const API_BASE=Providers.ASTRO_BASE;
-const APP_VERSION="1.11.2";
+const APP_VERSION="1.12.0";
+const SiteStore=typeof module!=="undefined"?require("./site-forecasts.js"):SiteForecasts;
+let siteForecastStore=null,comparisonBusy=false,comparisonRun=0;
+function siteStore(){
+  if(!siteForecastStore){let storage;try{storage=globalThis.localStorage}catch{}siteForecastStore=SiteStore.create(storage)}
+  return siteForecastStore;
+}
 const Planner=typeof module!=="undefined"?require("./planner.js"):TargetPlanner;
 const SNAPSHOT_KEY="astroImageNowLastGoodV1";
 const SETTINGS_KEY="astroImageNowSettings";
@@ -891,8 +897,17 @@ function renderTargetPlanning(nights,timeZone){
   const location=activeLocation();
   TargetPlannerUI.render({location,sites:state.settings.locations,timeZone,
     nightDate:nightKey(nights[state.selectedNightIndex]||[],timeZone)||Planner.dateAt(Date.now(),timeZone),
-    conditionsForDate:date=>targetPlanningWeather(nights,date,timeZone)
+    conditionsForDate:date=>targetPlanningWeather(nights,date,timeZone),
+    snapshotForSite:site=>site.id===location.id&&state.dataContext===SiteStore.key(site,state.settings)?{forecast:state.forecast,weather:state.weather,forecastStale:state.forecastStale,weatherStale:state.weatherStale}:siteStore().get(site,state.settings),
+    summarizeWeather:weatherSummaryForRows,comparisonBusy,refreshComparison:refreshSiteComparison
   });
+}
+
+async function refreshSiteComparison(){
+  if(comparisonBusy)return;
+  const run=++comparisonRun;comparisonBusy=true;render();
+  try{await siteStore().refresh(state.settings.locations.filter(site=>site.id!==state.settings.activeLocationId),state.settings,()=>render())}
+  finally{if(run===comparisonRun){comparisonBusy=false;render()}}
 }
 
 function targetPlanningWeather(nights,date,timeZone){
@@ -908,7 +923,7 @@ function targetPlanningWeather(nights,date,timeZone){
 }
 
 function contextFor(settings=state.settings){
-  const location=activeLocation();
+  const location=settings?.locations?.find(site=>site.id===settings.activeLocationId);
   return JSON.stringify([location?.id,location?.lat,location?.lon,settings?.weatherSource]);
 }
 
@@ -923,6 +938,7 @@ function saveSnapshot(){
   if(!state.forecast&&!state.weather)return;
   const data={version:1,context:state.dataContext,forecast:state.forecast,weather:state.weather,moons:state.moons,providerStatus:state.providerStatus,fetchedAt:state.fetchedAt};
   state.lastGood=data;
+  siteStore().put(activeLocation(),state.settings,{...data,forecastStale:state.forecastStale,weatherStale:state.weatherStale});
   try{localStorage.setItem(SNAPSHOT_KEY,JSON.stringify(data))}catch{state.storageNotice="Forecast could not be saved on this device."}
 }
 
@@ -946,6 +962,7 @@ function renderDiagnostics(){
 }
 
 async function refresh(){
+  siteStore().cancel();comparisonRun++;comparisonBusy=false;
   const id=++state.refreshId;
   state.refreshController?.abort();
   const controller=new AbortController();

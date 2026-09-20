@@ -23,14 +23,18 @@ const TargetPlanner=(()=>{
     if(!Number.isFinite(site?.lat)||Math.abs(site.lat)>90||!Number.isFinite(site?.lon)||Math.abs(site.lon)>180)throw Error("Select a valid observing site.");
     return new A.Observer(site.lat,site.lon,Number.isFinite(site.elevationM)?site.elevationM:0);
   }
-  function vectorFor(target,time){
+  function vectorFor(target,time,observer){
+    if(["Moon","Venus","Mars","Jupiter","Saturn"].includes(target.body)){
+      if(!observer)throw Error("An observer is required for moving targets.");
+      return A.Equator(A.Body[target.body],time,observer,false,true).vec;
+    }
     if(target.epoch!=="J2000"||!Number.isFinite(target.raHours)||target.raHours<0||target.raHours>=24||!Number.isFinite(target.decDeg)||Math.abs(target.decDeg)>90)throw Error("Target coordinates unavailable.");
     return A.VectorFromSphere(new A.Spherical(target.decDeg,target.raHours*15,1),time);
   }
   function altitude(vector,rotation){return A.HorizonFromVector(A.RotateVector(rotation,vector),null)}
   function position(target,date,site){
     const time=A.MakeTime(new Date(date)),observer=observerFor(site);
-    const h=altitude(vectorFor(target,time),A.Rotation_EQJ_HOR(time,observer));
+    const h=altitude(vectorFor(target,time,observer),A.Rotation_EQJ_HOR(time,observer));
     return{altitude:h.lat,azimuth:h.lon};
   }
   function sunAltitude(date,site){
@@ -100,36 +104,39 @@ const TargetPlanner=(()=>{
   }
   function evaluate(target,context,rig,site,{minAltitude=30,filter=null}={}){
     if(!Number.isFinite(minAltitude)||minAltitude<15||minAltitude>75)throw Error("Altitude threshold must be between 15° and 75°.");
-    const vector=vectorFor(target,new Date(context.start));
+    const moving=!!target.body,observer=observerFor(site);
+    const fixed=moving?null:vectorFor(target,new Date(context.start));
     const samples=context.samples.map(sample=>{
+      const vector=moving?vectorFor(target,new Date(sample.ms),observer):fixed;
       const h=altitude(vector,sample.rotation);
       return{...sample,altitude:h.lat,azimuth:h.lon,moonSeparation:A.AngleBetween(vector,sample.moonVector)};
     });
-    const dark=p=>context.threshold!==null&&p.sunAltitude<=context.threshold;
+    const threshold=moving?-6:context.threshold;
+    const dark=p=>threshold!==null&&p.sunAltitude<=threshold;
     const useful=p=>dark(p)&&p.altitude>=minAltitude;
     const geometryWindow=longestWindow(samples,useful);
-    const moonWindow=longestWindow(samples,p=>useful(p)&&!moonCaution(target,p,filter));
+    const moonWindow=moving?geometryWindow:longestWindow(samples,p=>useful(p)&&!moonCaution(target,p,filter));
     const window=moonWindow?.minutes>=60?moonWindow:geometryWindow;
     const darkSamples=samples.filter(dark);
     const peak=darkSamples.length?darkSamples.reduce((a,b)=>a.altitude>b.altitude?a:b):null;
-    const framingResult=framing(target,rig);
+    const framingResult=moving?{kind:"unknown",label:"Sensor field only; disk size not modeled",field:fieldOfView(rig)}:framing(target,rig);
     const selected=window?.samples||[];
     const moonUp=selected.filter(p=>p.moonAltitude>0);
-    const moonRisk=selected.some(p=>moonCaution(target,p,filter));
+    const moonRisk=!moving&&selected.some(p=>moonCaution(target,p,filter));
     const separation=moonUp.length?Math.min(...moonUp.map(p=>p.moonSeparation)):null;
     const illumination=moonUp.length?Math.max(...moonUp.map(p=>p.illumination)):null;
     const darkSky=target.lightPollution==="high"&&Number.isFinite(site.bortle)&&site.bortle>=6;
     let band="Promising geometry";
-    if(!window)band=context.threshold===null?"No dark window":"Too low in darkness";
+    if(!window)band=threshold===null?"No dark window":moving?"Too low after twilight":"Too low in darkness";
     else if(window.minutes<60)band="Short window";
     else if(framingResult.kind==="mosaic")band="Crop / mosaic project";
     else if(darkSky)band="Dark-sky priority";
     else if(moonRisk)band="Moon caution";
-    else if(["small","unknown","tight"].includes(framingResult.kind))band=framingResult.label;
+    else if(!moving&&["small","unknown","tight"].includes(framingResult.kind))band=framingResult.label;
     // Internal ordering only: these weights are editorial heuristics, not an imaging-quality score.
     const framingPenalty={mosaic:20,unknown:8,small:12,tight:4,comfortable:0}[framingResult.kind];
     const rank=!window?-1000:(window.minutes/60)*5+(peak?.altitude||0)/10-(moonRisk?15:0)-(darkSky?12:0)-framingPenalty;
-    return{target,samples,window,geometryWindow,peak,framing:framingResult,moonRisk,moonMinSeparation:separation,moonIllumination:illumination,moonBelowThroughout:!!selected.length&&!moonUp.length,darkSky,band,rank,minAltitude,filterAdvice:filterAdvice(target,filter,site)};
+    return{target,samples,window,geometryWindow,peak,threshold,framing:framingResult,moonRisk,moonMinSeparation:separation,moonIllumination:illumination,moonBelowThroughout:!!selected.length&&!moonUp.length,darkSky,band,rank,minAltitude,filterAdvice:moving?"Unfiltered is the initial capture baseline. A deep-sky light-pollution filter is not automatically useful for lunar/planetary video.":filterAdvice(target,filter,site)};
   }
   function plan(catalog,date,site,timeZone,rig,options={}){
     const context=nightContext(date,site,timeZone);

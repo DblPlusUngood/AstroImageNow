@@ -3,8 +3,8 @@
   "short_name": "AstroImageNow",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#07101e",
-  "theme_color": "#08111f",
+  "background_color": "#101012",
+  "theme_color": "#101012",
   "description": "Personal Astrospheric-powered astrophotography conditions dashboard.",
   "icons": [
     {"src":"icon-192.png","sizes":"192x192","type":"image/png","purpose":"any"},

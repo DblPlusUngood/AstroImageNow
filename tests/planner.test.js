@@ -107,5 +107,5 @@ test("vendored engine matches the pinned upstream artifact",()=>{
 test("only reconciled owned filters appear in the rig and the L-Pro is not presented as dual-band",()=>{
   assert.deepEqual(rig.filters.map(f=>f.id),['none','l-pro']);
   assert.match(P.filterAdvice(C.targets.find(t=>t.catalogId==='NGC0281'),filter,site),/not a dual-band/);
-  assert.equal(E.separateRig.mode,'lunar-planetary');
+  assert.equal(E.telescopes.find(t=>t.id==='c8').mode,'planetary');
 });

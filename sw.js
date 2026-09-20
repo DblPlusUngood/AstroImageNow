@@ -1,5 +1,5 @@
-const CACHE="astro-image-now-v1.11.2";
-const FILES=["./","./index.html","./providers.js","./vendor/astronomy.browser.min.js","./data/targets.js","./equipment.js","./planner.js","./planner-ui.js","./data/README.md","./data/OpenNGC-LICENSE.txt","./vendor/astronomy-LICENSE.txt","./app.js","./manifest.webmanifest","./icon.svg","./icon-180.png","./icon-192.png","./icon-512.png"];
+const CACHE="astro-image-now-v1.12.0";
+const FILES=["./","./index.html","./providers.js","./vendor/astronomy.browser.min.js","./data/targets.js","./equipment.js","./planner.js","./planner-ui.js","./data/solar-system.js","./opportunities.js","./site-forecasts.js","./theme.css","./data/README.md","./data/OpenNGC-LICENSE.txt","./vendor/astronomy-LICENSE.txt","./app.js","./manifest.webmanifest","./icon.svg","./icon-180.png","./icon-192.png","./icon-512.png"];
 const SHELL=new Set(FILES.map(file=>new URL(file,self.location).href));
 
 self.addEventListener("install",event=>{
