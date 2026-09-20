@@ -141,7 +141,7 @@ const AstroProviders=(()=>{
       meta:{provider:"foreca",label:"Weather data by Foreca",url:"https://www.foreca.com/",hasAirQuality:air.size>0,partial:forecast.length!==raw.length||!currentData?.current},
       current:{time:current.time||null,temperature_2m:number(current.temperature,-150,150),apparent_temperature:number(current.feelsLikeTemp,-150,200),relative_humidity_2m:number(current.relHumidity,0,100),weather_code:null,weather_phrase:typeof current.symbolPhrase==="string"?current.symbolPhrase:"",precipitation:inches(current.precipAccum),visibility:number(current.visibility,0),wind_gusts_10m:number(current.windGust,0,350)},
       hourly_units:{temperature_2m:"°F",precipitation:"inch",visibility:"m",wind_gusts_10m:"mph"},
-      hourly:{time:forecast.map(r=>new Date(timeMs(r.time)).toISOString()),temperature_2m:pick("temperature",-150,150),relative_humidity_2m:pick("relHumidity",0,100),precipitation_probability:pick("precipProb",0,100),precipitation:forecast.map(r=>inches(r.precipAccum)),weather_code:forecast.map(()=>null),weather_phrase:forecast.map(r=>typeof r.symbolPhrase==="string"?r.symbolPhrase:""),thunder_probability:pick("thunderProb",0,100),cloud_cover:pick("cloudiness",0,100),visibility:pick("visibility",0),wind_gusts_10m:pick("windGust",0,350),us_aqi:forecast.map(r=>number(air.get(timeMs(r.time))?.AQI,0)),us_aqi_pm2_5:forecast.map(r=>number(air.get(timeMs(r.time))?.AQI_PM2P5,0))}
+      hourly:{time:forecast.map(r=>new Date(timeMs(r.time)).toISOString()),temperature_2m:pick("temperature",-150,150),relative_humidity_2m:pick("relHumidity",0,100),dew_point_2m:pick("dewPoint",-150,150),wind_speed_10m:pick("windSpeed",0,350),precipitation_probability:pick("precipProb",0,100),precipitation:forecast.map(r=>inches(r.precipAccum)),weather_code:forecast.map(()=>null),weather_phrase:forecast.map(r=>typeof r.symbolPhrase==="string"?r.symbolPhrase:""),thunder_probability:pick("thunderProb",0,100),cloud_cover:pick("cloudiness",0,100),visibility:pick("visibility",0),wind_gusts_10m:pick("windGust",0,350),us_aqi:forecast.map(r=>number(air.get(timeMs(r.time))?.AQI,0)),us_aqi_pm2_5:forecast.map(r=>number(air.get(timeMs(r.time))?.AQI_PM2P5,0))}
     };
   }
 
@@ -177,7 +177,7 @@ const AstroProviders=(()=>{
 
   function normalizeOpenWeather(data){
     if(!Array.isArray(data.hourly?.time)||!data.hourly.time.some(t=>Number.isFinite(timeMs(t))))throw new ProviderError("Open-Meteo","schema");
-    const bounds={temperature_2m:[-150,150],relative_humidity_2m:[0,100],precipitation_probability:[0,100],precipitation:[0,Infinity],weather_code:[0,99],visibility:[0,Infinity],wind_gusts_10m:[0,350],cloud_cover:[0,100]};
+    const bounds={temperature_2m:[-150,150],dew_point_2m:[-150,150],wind_speed_10m:[0,350],relative_humidity_2m:[0,100],precipitation_probability:[0,100],precipitation:[0,Infinity],weather_code:[0,99],visibility:[0,Infinity],wind_gusts_10m:[0,350],cloud_cover:[0,100]};
     const indexes=data.hourly.time.map((t,i)=>[timeMs(t),i]).filter(x=>Number.isFinite(x[0])).sort((a,b)=>a[0]-b[0]);
     const hourly={time:indexes.map(([ms])=>new Date(ms).toISOString())};
     for(const[key,range]of Object.entries(bounds))hourly[key]=indexes.map(([,i])=>number(data.hourly[key]?.[i],...range));
@@ -186,7 +186,7 @@ const AstroProviders=(()=>{
 
   async function fetchOpenMeteo(location,context={}){
     const p=roundedLocation(location);
-    const params=new URLSearchParams({latitude:p.lat,longitude:p.lon,current:"temperature_2m,apparent_temperature",hourly:"temperature_2m,relative_humidity_2m,precipitation_probability,precipitation,weather_code,visibility,wind_gusts_10m,cloud_cover",temperature_unit:"fahrenheit",wind_speed_unit:"mph",precipitation_unit:"inch",timezone:"GMT",forecast_days:"8"});
+    const params=new URLSearchParams({latitude:p.lat,longitude:p.lon,current:"temperature_2m,apparent_temperature",hourly:"temperature_2m,dew_point_2m,relative_humidity_2m,wind_speed_10m,precipitation_probability,precipitation,weather_code,visibility,wind_gusts_10m,cloud_cover",temperature_unit:"fahrenheit",wind_speed_unit:"mph",precipitation_unit:"inch",timezone:"GMT",forecast_days:"8"});
     const weather=await capture("open-meteo-weather",async()=>normalizeOpenWeather(await requestJson(`${WEATHER_BASE}?${params}`,{},"Open-Meteo",context)),context);
     if(!weather.data)throw new ProviderError("Open-Meteo",weather.record.error.code,weather.record.error.httpStatus);
     const airParams=new URLSearchParams({latitude:p.lat,longitude:p.lon,hourly:"us_aqi,us_aqi_pm2_5,pm2_5,aerosol_optical_depth",timezone:"GMT",forecast_days:"5"});

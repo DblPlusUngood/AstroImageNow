@@ -26,18 +26,20 @@ function setup(t,mode={}){
     if(mode.weatherFail)return json({},401);
     if(url.includes("air-quality"))return json({forecast:times.slice(0,84).map(time=>({time,AQI:20}))});
     if(url.includes("/current/"))return json({current:{time:times[0],temperature:60}});
-    return json({forecast:times.map(time=>({time,temperature:55,precipProb:0,precipAccum:0,windGust:5,visibility:16000,thunderProb:0}))});
+    return json({forecast:times.map(time=>({time,temperature:55,dewPoint:40,cloudiness:5,windSpeed:4,precipProb:0,precipAccum:0,windGust:5,visibility:16000,thunderProb:0}))});
   });
   return {nodes,storage,mode};
 }
 
-test("independent refresh renders Foreca's week and explicitly marks astronomy coverage",async t=>{
+test("independent refresh renders Foreca's week and scores all seven nights with a subtle estimate marker",async t=>{
   const {nodes,storage}=setup(t);
   await app.refresh();
   assert.equal(nodes.get("errorBox").textContent,"");
   assert.equal(app.state.weather.meta.provider,"foreca");
   assert.equal(app.availableNights().length,7);
-  assert.match(nodes.get("nightOutlook").innerHTML,/WEATHER ONLY/);
+  assert.match(nodes.get("nightOutlook").innerHTML,/≈\d+/);
+  assert.equal((nodes.get("nightOutlook").innerHTML.match(/class="night-score"/g)||[]).length,7);
+  assert.ok(!nodes.get("nightOutlook").innerHTML.includes(">—<"));
   assert.equal(nodes.get("statusBadge").textContent,"GO");
   assert.equal(nodes.get("refreshBtn").disabled,false);
   assert.ok(storage.has("astroImageNowLastGoodV1"));
@@ -50,7 +52,8 @@ test("failed astronomy still displays successful Foreca weather",async t=>{
   assert.equal(app.state.forecast,null);
   assert.equal(app.state.weather.meta.provider,"foreca");
   assert.equal(nodes.get("weatherNow").textContent,"60°F");
-  assert.equal(nodes.get("statusBadge").textContent,"UNKNOWN");
+  assert.equal(nodes.get("statusBadge").textContent,"GO");
+  assert.match(nodes.get("scoreRing").textContent,/≈\d+/);
 });
 
 test("failed weather still displays astronomy but prevents a weather go-ahead",async t=>{
@@ -61,12 +64,12 @@ test("failed weather still displays astronomy but prevents a weather go-ahead",a
   assert.match(nodes.get("weatherNote").textContent,/HTTP 401/);
 });
 
-test("Moon or extra-variable failure leaves available metrics without inventing a full score",async t=>{
+test("local Moon needs no API call and missing extra variables use marked weather estimates",async t=>{
   for(const mode of[{moonFail:true},{extraFail:true}]){
     const {nodes}=setup(t,mode);await app.refresh();
     assert.ok(app.state.forecast);assert.ok(app.state.weather);
-    assert.equal(nodes.get("statusBadge").textContent,"UNKNOWN");
-    assert.equal(nodes.get("scoreRing").textContent,"—");
+    assert.equal(nodes.get("statusBadge").textContent,"GO");
+    assert.match(nodes.get("scoreRing").textContent,mode.extraFail?/^≈\d+$/:/^\d+$/);
   }
 });
 
@@ -94,7 +97,7 @@ test("late results from an aborted refresh cannot overwrite the next location",a
   setup(t);
   let release;
   const held=new Promise(resolve=>{release=resolve});
-  const fixtureWeather=p.normalizeForecaWeather(null,{forecast:times.map(time=>({time,temperature:55,precipProb:0,precipAccum:0,windGust:5,visibility:16000,thunderProb:0}))});
+  const fixtureWeather=p.normalizeForecaWeather(null,{forecast:times.map(time=>({time,temperature:55,dewPoint:40,cloudiness:5,windSpeed:4,precipProb:0,precipAccum:0,windGust:5,visibility:16000,thunderProb:0}))});
   t.mock.method(p,"supplemental",async location=>{
     if(location.lat===40)await held;
     return {...fixtureWeather,meta:{...fixtureWeather.meta,site:location.lat}};

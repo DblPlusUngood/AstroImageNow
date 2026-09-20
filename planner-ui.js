@@ -1,9 +1,9 @@
 "use strict";
 const TargetPlannerUI=(()=>{
-  const P=TargetPlanner,C=AstroCatalog,E=AstroEquipment,O=ImagingOpportunities,allTargets=[...C.targets,...SolarSystemTargets];
+  const P=TargetPlanner,C=AstroCatalog,E=AstroEquipment,O=ImagingOpportunities,F=ImagingFilters,J=ObservingJournal,A=TargetAdvisor,allTargets=[...C.targets,...SolarSystemTargets];
   const KEY="astroImageNowPlannerV1";
-  let context=null,preferences={date:null,followNight:true,targetId:null,rigId:"z73-533",mode:"deep-sky",filterId:"l-pro",minAltitude:30},plans=[],query="",initialized=false;
-  let calculatedKey=null,calculated=null,notice="";
+  let context=null,preferences={date:null,followNight:true,targetId:null,rigId:"z73-533",mode:"deep-sky",filterId:"l-pro",minAltitude:30,advisorPolicy:"auto",includePlanned:false},plans=[],query="",initialized=false;
+  let calculatedKey=null,calculated=null,notice="",sessions=[],editingId=null,removedSession=null;
   const $=id=>document.getElementById(id);
   function el(tag,text,className){const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(className)node.className=className;return node}
   function rig(){return E.rigs.find(r=>r.id===preferences.rigId)||E.rigs[0]}
@@ -16,7 +16,7 @@ const TargetPlannerUI=(()=>{
       const saved=JSON.parse(localStorage.getItem(KEY)||"null");
       if(saved?.version!==1)return;
       const p=saved.preferences||{},selected=E.rigs.find(r=>r.id===p.rigId)||E.rigs[0];
-      preferences={date:P.validDate(p.date)?p.date:null,followNight:p.followNight!==false,targetId:allTargets.some(t=>t.id===p.targetId)?p.targetId:null,rigId:selected.id,mode:["deep-sky","planetary"].includes(p.mode)?p.mode:selected.mode,filterId:selected.filters.some(f=>f.id===p.filterId)?p.filterId:selected.filters[0].id,minAltitude:[20,30,40,50].includes(p.minAltitude)?p.minAltitude:30};
+      preferences={date:P.validDate(p.date)?p.date:null,followNight:p.followNight!==false,targetId:allTargets.some(t=>t.id===p.targetId)?p.targetId:null,rigId:selected.id,mode:["deep-sky","planetary"].includes(p.mode)?p.mode:selected.mode,filterId:selected.filters.some(f=>f.id===p.filterId)?p.filterId:selected.filters[0].id,minAltitude:[20,30,40,50].includes(p.minAltitude)?p.minAltitude:30,advisorPolicy:["auto","deep-sky","planetary","selected"].includes(p.advisorPolicy)?p.advisorPolicy:"auto",includePlanned:p.includePlanned===true};
       plans=Array.isArray(saved.plans)?saved.plans:[];
     }catch{notice="Saved target planning data could not be read. Your forecast settings are separate."}
   }
@@ -26,25 +26,48 @@ const TargetPlannerUI=(()=>{
   function button(text,handler){const b=el("button",text,"btn");b.type="button";b.addEventListener("click",handler);return b}
   function resetSearch(){query="";$("plannerSearch").value="";preferences.targetId=null}
   function selectRig(scope,configuration,camera,power){
-    const selected=E.resolve(scope,configuration,camera,power);preferences.rigId=selected.id;
+    const selected=E.resolve(scope,configuration,camera,power);preferences.rigId=selected.id;preferences.advisorPolicy="selected";
     if(!selected.filters.some(f=>f.id===preferences.filterId))preferences.filterId="none";
     persist();render(context);
   }
   function init(){
-    if(initialized)return;initialized=true;read();
+    if(initialized)return;initialized=true;read();sessions=J.normalize(J.read(localStorage),{targets:allTargets,sites:context.sites,rigs:E.rigs});
     let resizeTimer;
     window.addEventListener("resize",()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>render(context),100)});
     $("plannerScope").addEventListener("change",event=>{const scope=E.telescopes.find(s=>s.id===event.target.value);preferences.mode=scope.mode;resetSearch();selectRig(scope.id,"native",scope.defaultCamera,2)});
     $("plannerConfiguration").addEventListener("change",event=>{const r=rig();selectRig(r.telescopeId,event.target.value,r.cameraId,2)});
     $("plannerCamera").addEventListener("change",event=>{const r=rig();selectRig(r.telescopeId,r.configurationId,event.target.value,r.barlowPower)});
     $("plannerBarlow").addEventListener("change",event=>{const r=rig();selectRig(r.telescopeId,"barlow",r.cameraId,Number(event.target.value))});
-    $("plannerMode").addEventListener("change",event=>{preferences.mode=event.target.value;resetSearch();persist();render(context)});
+    $("plannerMode").addEventListener("change",event=>{preferences.mode=event.target.value;preferences.advisorPolicy="selected";resetSearch();persist();render(context)});
     $("plannerDate").addEventListener("change",event=>{if(!P.validDate(event.target.value)||!event.target.checkValidity())return;preferences.date=event.target.value;preferences.followNight=false;persist();render(context)});
     $("plannerFollow").addEventListener("click",()=>{preferences.followNight=true;persist();render(context)});
-    $("plannerFilter").addEventListener("change",event=>{preferences.filterId=event.target.value;persist();render(context)});
+    $("plannerFilter").addEventListener("change",event=>{preferences.filterId=event.target.value;preferences.advisorPolicy="selected";persist();render(context)});
     $("plannerAltitude").addEventListener("change",event=>{preferences.minAltitude=Number(event.target.value);persist();render(context)});
     $("plannerSearch").addEventListener("input",event=>{query=event.target.value;render(context)});
     $("plannerTarget").addEventListener("change",event=>{preferences.targetId=event.target.value;persist();render(context)});
+    $("advisorPolicy").addEventListener("change",event=>{preferences.advisorPolicy=event.target.value;persist();render(context)});
+    $("advisorPlanned").addEventListener("change",event=>{preferences.includePlanned=event.target.checked;persist();render(context)});
+    $("journalStart").addEventListener("click",()=>editSession());
+    $("journalCancel").addEventListener("click",()=>{$("journalForm").classList.add("hidden");editingId=null});
+    $("journalForm").addEventListener("submit",event=>{
+      event.preventDefault();if(!event.target.reportValidity())return;
+      if(!editingId&&sessions.length>=J.MAX){$("journalMessage").textContent="The journal is full. Export a backup before removing an old entry.";return}
+      const prior=sessions.find(e=>e.id===editingId),site=context.sites.find(s=>s.id===$("journalSite").value);
+      const entry={id:editingId||crypto.randomUUID(),date:$("journalDate").value,targetId:$("journalTarget").value,siteId:$("journalSite").value,siteName:site?.name||prior?.siteName||"Previous site",rigId:$("journalRig").value,filterId:$("journalFilter").value,outcome:$("journalOutcome").value,integrationMinutes:$("journalMinutes").value===""?null:Number($("journalMinutes").value),notes:$("journalNotes").value.trim(),createdAt:prior?.createdAt||new Date().toISOString()};
+      const valid=J.normalize([entry],{targets:allTargets,sites:context.sites,rigs:E.rigs});
+      if(!valid.length){$("journalMessage").textContent="Check the session date, target and rig before saving.";return}
+      if(saveSessions([valid[0],...sessions.filter(e=>e.id!==entry.id)])){
+        editingId=null;$("journalForm").classList.add("hidden");$("journalMessage").textContent="Session saved on this device.";render(context);
+      }
+    });
+    $("journalUndo").addEventListener("click",()=>{
+      if(removedSession&&saveSessions([removedSession,...sessions])){removedSession=null;$("journalMessage").textContent="Session restored.";render(context)}
+    });
+    $("journalExport").addEventListener("click",()=>{
+      const url=URL.createObjectURL(new Blob([J.exportJSON(sessions)],{type:"application/json"})),link=el("a");
+      link.href=url;link.download=`AstroImageNow-journal-${P.dateAt(new Date(),context.timeZone)}.json`;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
+      $("journalMessage").textContent="Journal export prepared. Keep the downloaded file as your backup.";
+    });
     $("plannerCompare").addEventListener("click",()=>context.refreshComparison());
     $("plannerSave").addEventListener("click",()=>{
       if(!preferences.targetId)return;
@@ -52,6 +75,41 @@ const TargetPlannerUI=(()=>{
       plans=P.normalizePlans([entry,...plans],allTargets,context.sites,E.rigs);persist();render(context);
       $("plannerMessage").textContent=notice||"Saved on this device. This is a plan, not an automatic telescope command.";
     });
+  }
+  function filterOptions(){return F.choices.map(f=>({...f,name:f.name+(["planned","proposed"].includes(f.status)?` · ${f.status}`:"")}))}
+  function saveSessions(next){
+    if(next.length>J.MAX){$("journalMessage").textContent="The journal is full. Export a backup before removing an old entry.";return false}
+    try{J.save(localStorage,next);sessions=next;return true}catch{$("journalMessage").textContent="This browser could not save the journal. Your form is still open; copy the notes before leaving.";return false}
+  }
+  function editSession(entry=null){
+    editingId=entry?.id||null;$("journalPanel").open=true;$("journalForm").classList.remove("hidden");$("journalEditing").textContent=entry?"Edit session":"New session";
+    $("journalDate").value=entry?.date||date();options("journalTarget",allTargets.map(t=>({id:t.id,name:t.body?t.name:`${t.designation} · ${t.name}`})),entry?.targetId||preferences.targetId);
+    const sites=[...context.sites];if(entry&&!sites.some(s=>s.id===entry.siteId))sites.push({id:entry.siteId,name:entry.siteName+" (previous site)"});
+    options("journalSite",sites,entry?.siteId||context.location.id);options("journalRig",E.rigs,entry?.rigId||rig().id);options("journalFilter",filterOptions(),entry?.filterId||preferences.filterId);
+    $("journalOutcome").value=entry?.outcome||"attempted";$("journalMinutes").value=entry?.integrationMinutes??"";$("journalNotes").value=entry?.notes||"";$("journalMessage").textContent="";
+    $("journalForm").scrollIntoView({behavior:"smooth",block:"start"});$("journalDate").focus({preventScroll:true});
+  }
+  function renderJournal(){
+    $("journalCount").textContent=`Observing journal (${sessions.length})`;$("journalIntro").textContent=sessions.length?"Your logged sessions help prioritize another try or a new subject.":"No sessions logged here yet. Inspect a target, then choose Log a session.";
+    $("journalUndo").classList.toggle("hidden",!removedSession);$("journalExport").disabled=!sessions.length;
+    $("journalEntries").replaceChildren(...[...sessions].sort((a,b)=>b.date.localeCompare(a.date)||String(b.createdAt).localeCompare(String(a.createdAt))).map(entry=>{
+      const row=el("li"),target=allTargets.find(t=>t.id===entry.targetId),selectedRig=E.rigs.find(r=>r.id===entry.rigId),filter=F.choices.find(f=>f.id===entry.filterId);
+      row.append(el("strong",`${entry.date} · ${target.body?target.name:target.designation+" · "+target.name}`),el("p",`${entry.siteName} · ${selectedRig.name} · ${filter.name}`,"planner-help"),el("p",`${{attempted:"Attempted",captured:"Captured successfully",revisit:"Want another try"}[entry.outcome]}${entry.integrationMinutes!==null?` · ${entry.integrationMinutes} min`:""}`,"sub"));
+      if(entry.notes)row.append(el("p",entry.notes,"journal-note"));
+      row.append(button("Edit",()=>editSession(entry)),button("Remove",()=>{if(saveSessions(sessions.filter(e=>e.id!==entry.id))){removedSession=entry;if(editingId===entry.id){editingId=null;$("journalForm").classList.add("hidden")}$("journalMessage").textContent="Session removed. Undo is available below.";render(context)}}));return row;
+    }));
+  }
+  function renderAdvisor(data,selectedRig,filter,day){
+    $("advisorPolicy").value=preferences.advisorPolicy;$("advisorPlanned").checked=preferences.includePlanned;
+    const advice=A.propose({catalog:C.targets,solar:SolarSystemTargets,date:day,site:context.location,timeZone:context.timeZone,rig:selectedRig,mode:preferences.mode,filter,policy:preferences.advisorPolicy,includePlanned:preferences.includePlanned,minAltitude:preferences.minAltitude,data,journal:sessions});
+    $("advisorHeading").textContent=advice.heading;$("advisorSummary").textContent=advice.summary;
+    $("advisorPicks").replaceChildren(...advice.picks.map(pick=>{
+      const {target}=pick.result,card=el("article",undefined,"advisor-pick");card.dataset.opportunity=pick.match.kind;
+      card.append(el("h4",target.body?target.name:`${target.designation} · ${target.name}`),el("p",`${pick.rig.name} · ${pick.filter.name}${["planned","proposed"].includes(pick.filter.status)?` (${pick.filter.status})`:""}`,"planner-help"),el("p",opportunityText(pick.match),"sub"),el("p",pick.reasons.join(" "),"planner-help"),button("Explore this setup",()=>{
+        preferences.rigId=pick.rig.id;preferences.mode=pick.mode;preferences.filterId=pick.filter.id;resetSearch();preferences.targetId=target.id;preferences.advisorPolicy="selected";persist();render(context);$("plannerDetail").scrollIntoView({behavior:"smooth",block:"start"});
+      }));return card;
+    }));
+    if(!advice.picks.length)$("advisorPicks").append(el("p","No catalog targets meet this date and altitude choice. Try a lower minimum altitude or another night.","planner-help"));
   }
   function chart(result,night){
     const width=Math.max(300,Math.min(640,$("plannerChart").clientWidth||640)),height=190,left=30,right=25,top=12,bottom=32;
@@ -93,11 +151,11 @@ const TargetPlannerUI=(()=>{
   function render(ctx){
     if(!ctx||!$("targetPlanner"))return;context=ctx;init();
     const selectedRig=rig(),scope=E.telescopes.find(s=>s.id===selectedRig.telescopeId),filter=selectedRig.filters.find(f=>f.id===preferences.filterId)||selectedRig.filters[0],day=date(),moving=preferences.mode==="planetary";
-    plans=P.normalizePlans(plans,allTargets,ctx.sites,E.rigs);renderSavedPlans(ctx);
+    plans=P.normalizePlans(plans,allTargets,ctx.sites,E.rigs);renderSavedPlans(ctx);renderJournal();
     options("plannerScope",E.telescopes.map(s=>({...s,name:s.shortName})),scope.id);options("plannerConfiguration",scope.configurations,selectedRig.configurationId);options("plannerCamera",E.cameras,selectedRig.cameraId);
     $("plannerBarlowField").classList.toggle("hidden",selectedRig.configurationId!=="barlow");$("plannerBarlow").value=String(selectedRig.barlowPower===3?3:2);$("plannerMode").value=preferences.mode;
     $("plannerDate").value=day;$("plannerFollow").textContent=preferences.followNight?"Following selected night":"Follow selected night";$("plannerFollow").disabled=preferences.followNight;
-    $("plannerAltitude").value=String(preferences.minAltitude);options("plannerFilter",selectedRig.filters,filter.id);
+    $("plannerAltitude").value=String(preferences.minAltitude);options("plannerFilter",filterOptions(),filter.id);
     const field=P.fieldOfView(selectedRig);
     $("plannerRig").textContent=`${selectedRig.focalLengthMm.toLocaleString("en-US",{maximumFractionDigits:0})} mm · f/${selectedRig.fRatio.toFixed(1)} · ${field.widthDeg.toFixed(2)}° × ${field.heightDeg.toFixed(2)}° · ${field.pixelScale.toFixed(2)}″/pixel`;
     $("plannerRigNote").textContent=selectedRig.readiness;
@@ -106,20 +164,17 @@ const TargetPlannerUI=(()=>{
     try{
       if(key!==calculatedKey){calculated=P.plan(catalog,day,ctx.location,ctx.timeZone,selectedRig,{minAltitude:preferences.minAltitude,filter});calculatedKey=key}
       const data=O.prepare(ctx.snapshotForSite(ctx.location),ctx.summarizeWeather);
-      $("plannerForecast").textContent=`${data.stale?"Saved forecast is stale; refresh before setup. ":""}${moving?"Lunar/planetary windows use cloud, seeing and wind; the dashboard score above remains a wide-field deep-sky assessment.":"Deep-sky windows use cloud, transparency and wind."} Each window also checks rain, storm, fog and gust hazards. ${data.provider?`Weather: ${data.provider}.`:"Weather not loaded."}`;
+      renderAdvisor(data,selectedRig,filter,day);
+      $("plannerForecast").textContent=`${data.stale?"Saved forecast is stale; refresh before setup. ":""}${moving?"Lunar/planetary windows use cloud, seeing and wind; the conditions score above is independent of your setup.":"Deep-sky windows use cloud, transparency and wind."} Each window also checks rain, storm, fog and gust hazards. ${data.provider?`Weather: ${data.provider}.`:"Weather not loaded."}`;
       $("plannerForecast").dataset.severity=data.stale?"unknown":"clear";
-      $("plannerMethod").textContent=`${moving?"Sun below −6° (end of civil twilight)":calculated.context.threshold===-18?"Astronomical darkness":calculated.context.threshold===-12?"Nautical-darkness fallback":"No astronomical or nautical darkness"} · 10-minute geometry samples · minimum altitude ${preferences.minAltitude}°. Forecast intervals require both neighboring hourly samples; gaps and expired data stay unknown. Terrain, trees, buildings and mount limits are not modeled.`;
+      $("plannerMethod").textContent=`${moving?"Sun below −6° (end of civil twilight)":calculated.context.threshold===-18?"Astronomical darkness":calculated.context.threshold===-12?"Nautical-darkness fallback":"No astronomical or nautical darkness"} · 10-minute geometry samples · minimum altitude ${preferences.minAltitude}°. Forecast intervals require both neighboring hourly samples; ≈ marks a weather estimate when specialized data is absent; gaps and expired data stay unknown. Terrain, trees, buildings and mount limits are not modeled.`;
       const normalized=query.toLowerCase().replace(/[^a-z0-9]/g,'');
       const results=calculated.results.map(r=>({...r,opportunity:O.match(r,data,selectedRig,preferences.mode,filter)})).filter(r=>[r.target.name,r.target.designation,r.target.catalogId,...r.target.aliases].some(s=>s.toLowerCase().replace(/[^a-z0-9]/g,'').includes(normalized)));
-      const order={supported:0,caution:1,unknown:2,stale:2,limited:3,geometry:4};
+      const order={supported:0,estimated:1,caution:2,unknown:3,stale:3,limited:4,geometry:5};
       results.sort((a,b)=>order[a.opportunity.kind]-order[b.opportunity.kind]||b.rank-a.rank);
       $("plannerCount").textContent=`${results.length} of ${catalog.length} ${moving?"lunar/planetary":"curated deep-sky"} targets`;
       options("plannerTarget",results.map(r=>({id:r.target.id,name:`${r.target.body?r.target.name:`${r.target.designation} · ${r.target.name}`} — ${r.band}`})),preferences.targetId);
       const selected=results.find(r=>r.target.id===preferences.targetId)||results[0];
-      $("plannerPicks").replaceChildren(...results.filter(r=>r.window).slice(0,3).map(r=>{
-        const card=el("article",undefined,"target-pick");card.dataset.opportunity=r.opportunity.kind;
-        card.append(el("strong",r.target.body?r.target.name:`${r.target.designation} · ${r.target.name}`),el("span",r.band,"target-band"),el("p",opportunityText(r.opportunity),"sub"),el("p",`Geometry: ${span(r.window)}`,"planner-help"),button("Inspect target",()=>{preferences.targetId=r.target.id;persist();render(context)}));return card;
-      }));
       $("plannerDetail").classList.toggle("hidden",!selected);
       if(!selected){$("plannerEmpty").textContent="No catalog entries match this search.";$("plannerSites").replaceChildren();return}
       $("plannerEmpty").textContent="";preferences.targetId=selected.target.id;$("plannerTarget").value=selected.target.id;
@@ -134,7 +189,7 @@ const TargetPlannerUI=(()=>{
       $("plannerMoon").textContent=selected.target.body==="Moon"?`${Math.round((selected.peak?.illumination||0)*100)}% illuminated near its highest night altitude. Choose features by terminator lighting.`:moving?"Moonlight does not carry the deep-sky sky-background penalty in this mode. Local glare can still affect observing.":selected.moonBelowThroughout?"Moon below the horizon throughout this suggested window.":selected.moonMinSeparation!==null?`Moon up during part or all of the window: up to ${Math.round(selected.moonIllumination*100)}% illuminated; nearest separation ${Math.round(selected.moonMinSeparation)}°. ${selected.moonRisk?"Moonlight is a planning caution.":"No Moon caution at these sampled times."}`:"No useful window for a Moon assessment.";
       $("plannerFilterAdvice").textContent=selected.filterAdvice;
       $("plannerSiteAdvice").textContent=moving?"For bright lunar/planetary detail, prioritize steady air, altitude and unobstructed views over a darker Bortle class.":selected.darkSky?`${ctx.location.name} is set to Bortle ${ctx.location.bortle}; faint structure benefits from a darker site. Compare each site's weather below before traveling.`:!Number.isFinite(ctx.location.bortle)?"Site sky brightness is unknown; set Bortle in the location profile.":`The selected site is set to Bortle ${ctx.location.bortle}. Clouds, Moon and local lighting can still limit the session.`;
-      $("plannerObjectNote").textContent=selected.target.notes;
+      $("plannerObjectNote").textContent=`${selected.target.notes} ${J.history(sessions,selected.target.id).label}.`;
       const hasPlan=plans.some(p=>p.targetId===selected.target.id&&p.siteId===ctx.location.id&&p.date===day&&p.rigId===selectedRig.id);
       $("plannerSave").disabled=false;$("plannerSave").textContent=hasPlan?"Update saved target":"Save target for this night";$("plannerMessage").textContent=notice;
       renderSites(selected,selectedRig,filter,day);
