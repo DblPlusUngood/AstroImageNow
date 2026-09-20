@@ -13,7 +13,7 @@ test('rigs have unique stable IDs and all three C8 configurations with two owned
   assert.equal(E.resolve('c8','reduced','r6ii').focalLengthMm,1280.16);
   assert.equal(E.resolve('c8','barlow','533',2).focalLengthMm,4064);
   assert.equal(E.resolve('c8','barlow','533',3).focalLengthMm,6096);
-  assert.deepEqual(E.resolve('c8','barlow','533',3).filters.map(f=>f.id),['none']);
+  assert.deepEqual(E.resolve('c8','barlow','533',3).filters.map(f=>f.id),['none','l-pro','l-ultimate','uv-ir']);
   const ultra=E.resolve('ultracat56','native','533');assert.equal(ultra.focalLengthMm,269);assert.ok(Math.abs(P.fieldOfView(ultra).widthDeg-2.4086)<.001);
   const c8=P.fieldOfView(E.resolve('c8','native','r6ii'));assert.ok(c8.widthDeg>1&&c8.heightDeg<.7);
   assert.equal(P.framing(C.targets.find(t=>t.designation==='M45'),ultra).kind,'mosaic');
@@ -63,7 +63,7 @@ test('planetary seeing criteria differ from transparency and increase for a Barl
   assert.equal(O.assess(now+H,data,rig,'deep-sky').kind,'limited');
   assert.equal(O.assess(now+H,data,E.resolve('c8','native','r6ii'),'planetary').kind,'supported');
   assert.equal(O.assess(now+H,data,E.resolve('c8','barlow','r6ii',2),'planetary').kind,'limited');
-  s.forecast.HourlyForecast.forEach(r=>delete r.Seeing);assert.equal(O.assess(now+H,prepared(s),rig,'planetary').kind,'unknown');
+  s.forecast.HourlyForecast.forEach(r=>delete r.Seeing);assert.equal(O.assess(now+H,prepared(s),rig,'planetary').kind,'estimated');
 });
 
 test('bright Moon intervals stay cautionary while lunar imaging has no self-penalty',()=>{

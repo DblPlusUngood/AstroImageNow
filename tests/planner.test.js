@@ -104,8 +104,8 @@ test("vendored engine matches the pinned upstream artifact",()=>{
   assert.equal(hash,provenance.sha256['astronomy.browser.min.js']);
 });
 
-test("only reconciled owned filters appear in the rig and the L-Pro is not presented as dual-band",()=>{
-  assert.deepEqual(rig.filters.map(f=>f.id),['none','l-pro']);
-  assert.match(P.filterAdvice(C.targets.find(t=>t.catalogId==='NGC0281'),filter,site),/not a dual-band/);
+test("planning filters retain distinct roles and ownership states",()=>{
+  assert.deepEqual(rig.filters.map(f=>f.id),['none','l-pro','l-ultimate','uv-ir']);
+  assert.match(P.filterAdvice(C.targets.find(t=>t.catalogId==='NGC0281'),filter,site),/Broadband/);
   assert.equal(E.telescopes.find(t=>t.id==='c8').mode,'planetary');
 });

@@ -1,6 +1,7 @@
 "use strict";
 // Ownership: reconciled rig record + user confirmation, 2026-09-19. Optical values are nominal.
 const AstroEquipment=(()=>{
+  const F=typeof module!=="undefined"?require("./filters.js"):ImagingFilters;
   const cameras=[
     {id:"533",name:"ASI533MC Pro",sensorWidthMm:11.31,sensorHeightMm:11.31,pixelSizeUm:3.76,note:"Shared cooled camera; use one optical train at a time."},
     {id:"r6ii",name:"Canon R6 Mark II",sensorWidthMm:36,sensorHeightMm:24,pixelSizeUm:6,note:"Full still-image sensor field; vignetting and video crop/ROI are not modeled. Adapter compatibility needs verification."}
@@ -16,7 +17,6 @@ const AstroEquipment=(()=>{
       configurations:[{id:"native",name:"Native · f/4.8",focalLengthMm:269}],
       readiness:"Owned, newly added. Planning baseline shares the ASI533; mount, camera connection and guiding are not yet verified. Petzval design needs no external field flattener."}
   ];
-  const unfiltered={id:"none",name:"Unfiltered",kind:"none"},lpro={id:"l-pro",name:"Optolong L-Pro",kind:"broadband"};
   const rigs=[];
   for(const scope of telescopes)for(const config of scope.configurations)for(const power of config.id==="barlow"?[2,3]:[1])for(const camera of cameras){
     const focalLengthMm=config.focalLengthMm*power;
@@ -25,8 +25,8 @@ const AstroEquipment=(()=>{
       name:`${scope.name} · ${power>1?`${power}× Barlow`:config.name} + ${camera.name}`,
       mode:scope.mode,focalLengthMm,apertureMm:scope.apertureMm,fRatio:focalLengthMm/scope.apertureMm,
       readiness:`${scope.readiness} ${camera.note}`,
-      // A known 2-inch filter is not assumed to fit an uncommissioned camera/Barlow path.
-      filters:scope.id==="z73"&&camera.id==="533"?[unfiltered,lpro]:[unfiltered]});
+      // Planning choices are distinct from ownership and mechanical compatibility.
+      filters:F.choices});
   }
   function resolve(scopeId,configId,cameraId,power=2){
     return rigs.find(r=>r.telescopeId===scopeId&&r.configurationId===configId&&r.cameraId===cameraId&&(configId!=="barlow"||r.barlowPower===Number(power)))||rigs[0];

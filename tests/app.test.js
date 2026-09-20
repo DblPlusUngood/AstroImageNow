@@ -17,7 +17,7 @@ function forecastRow(time,overrides={}){
   };
 }
 
-test("v1.8 scoring baseline remains unchanged",()=>{
+test("conditions score uses fixed measured weights and excludes Moon",()=>{
   const moon={IsAboveHorizon:true,IlluminationPercent:50};
   const components=app.hourlyScoresForRow(forecastRow("2026-08-17T01:00:00Z"),moon);
   assert.deepEqual(components,{
@@ -28,7 +28,7 @@ test("v1.8 scoring baseline remains unchanged",()=>{
     dew:86,
     moon:67
   });
-  assert.equal(app.overallForRow(forecastRow("2026-08-17T01:00:00Z"),moon),78.79999999999998);
+  assert.equal(app.overallForRow(forecastRow("2026-08-17T01:00:00Z"),moon),79.42105263157895);
 });
 
 test("v1.8 hard cloud limiter remains unchanged",()=>{
@@ -163,8 +163,8 @@ test("weather visibility honors imperial feet from the live API shape",()=>{
 
 test("filter guidance distinguishes emission from broadband targets",()=>{
   const moon={IsAboveHorizon:true,IlluminationPercent:70};
-  assert.equal(app.filterRecommendation({targetType:"emission",bortle:6,moon,transparency:80,weather:null}).title,"L-Pro or unfiltered");
-  assert.equal(app.filterRecommendation({targetType:"broadband",bortle:6,moon,transparency:80,weather:null}).title,"Unfiltered / L-Pro comparison");
+  assert.equal(app.filterRecommendation({targetType:"emission",bortle:6,moon,transparency:80,weather:null}).title,"L-Ultimate");
+  assert.equal(app.filterRecommendation({targetType:"broadband",bortle:6,moon,transparency:80,weather:null}).title,"UV/IR-cut");
 });
 
 test("preparation guidance promotes hazards, clothing, and dew control",()=>{

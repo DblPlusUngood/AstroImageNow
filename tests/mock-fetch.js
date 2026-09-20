@@ -40,6 +40,8 @@
     hourly_units:{visibility:"ft"},
     hourly:{
       time:weatherTimes,
+      cloud_cover:weatherTimes.map((_,index)=>cloud(index)),
+      dew_point_2m:weatherTimes.map(()=>40),wind_speed_10m:weatherTimes.map(()=>5),
       temperature_2m:weatherTimes.map((_,index)=>56-Math.sin(index/5)*7),
       relative_humidity_2m:weatherTimes.map((_,index)=>70+Math.round(Math.sin(index/4)*12)),
       precipitation_probability:weatherTimes.map((_,index)=>index>=27&&index<=30?45:8),
@@ -55,7 +57,7 @@
     const url=String(input);
     if(url.includes("weatherapi.foreca.net/api/v1/current/"))return json({current:{temperature:61,feelsLikeTemp:60,relHumidity:72,symbolPhrase:"partly cloudy",precipAccum:0,visibility:19312,windGust:8}});
     if(url.includes("weatherapi.foreca.net/api/v1/forecast/hourly/"))return json({forecast:weatherTimes.slice(0,168).map((time,index)=>({
-      time:`${time}:00Z`,temperature:56-Math.sin(index/5)*7,relHumidity:70+Math.round(Math.sin(index/4)*12),
+      time:`${time}:00Z`,temperature:56-Math.sin(index/5)*7,relHumidity:70+Math.round(Math.sin(index/4)*12),cloudiness:cloud(index),windSpeed:5,dewPoint:40,
       precipProb:index>=27&&index<=30?45:8,precipAccum:0,symbolPhrase:index===29?"fog":"partly cloudy",
       visibility:index===29?7315:19312,windGust:index>=50&&index<=54?21:9,thunderProb:0
     }))});

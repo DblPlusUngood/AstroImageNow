@@ -38,7 +38,7 @@ For a true Home Screen / standalone app experience, serve this folder over HTTPS
 
 ## Scoring philosophy
 
-This is an app-derived astrophotography assessment, not an official Astrospheric rating. Cloud and transparency are weighted most heavily. Seeing is intentionally weighted less for a wide-field / first-light workflow. Wind, dew margin, and Moon are contextual penalties.
+This is an app-derived astrophotography assessment, not an official Astrospheric rating. Cloud and transparency are weighted most heavily. Seeing has a modest fixed weight in this general overview. Wind and dew margin also contribute. The score is independent of target, telescope, camera, filter and Moon; those choices affect Imaging Targets instead. When seeing/transparency or other optional components are absent, available weights are normalized and the score receives an ≈ marker. Cloud and sustained wind are required; hazards still override the setup verdict.
 
 ## Security
 
@@ -47,7 +47,19 @@ This build is intended for private personal devices. For public/shared hosting, 
 The browser sends the exact selected coordinates to Astrospheric for the astronomy forecast. Supplemental weather requests use coordinates rounded to two decimal places. The Astrospheric key is sent only to Astrospheric; the Foreca token is sent only to Foreca. Weather data is provided by [Foreca](https://www.foreca.com/) or [Open-Meteo](https://open-meteo.com/), according to the selected source. Open-Meteo air-quality data incorporates Copernicus Atmosphere Monitoring Service (CAMS) forecasts.
 
 
-## v1.12 — Rigs and actual imaging opportunities
+## v1.13 — A full week, Imaging Targets and an observing journal
+
+Every night with sufficient weather coverage has a score on the same 0–100 scale. **≈** identifies an estimate that uses available data, usually Foreca cloud/wind/dew beyond Astrospheric's detailed horizon. Missing seeing/transparency stay unknown. The general conditions score no longer includes Moon, and never changes with a rig, filter or subject choice. Local Moon geometry now supplies the whole week without extra Moon API requests.
+
+**Imaging Targets** carries subtle red target rings and offers up to three explained target/rig/filter/window suggestions. Choose **Best fit for this night**, **Deep sky**, **Moon & planets**, or **Use my selected rig & mode**. Manual rig, mode and filter choices select that last policy. These are local, deterministic planning rules using visibility, forecast coverage and hazards, seeing/transparency, framing, Moon, Bortle context and this device's logged sessions. They are not remote AI output or predictions of image quality. Automatic choices compare Z73/ASI533 and provisional UltraCat/ASI533 deep-sky setups with the native C8/Canon planetary setup; other configurations remain selectable. Shared hardware represents alternatives.
+
+Filters are **Unfiltered**, owned **L-Pro**, planned **L-Ultimate**, and proposed **UV/IR-cut**. Automatic choices exclude planned/proposed filters until **Explore planned filters** is enabled. Manual selections always remain available, with short target/camera advice and an adapter-path caveat where needed.
+
+Use **Log a session** under a target to record date, site, rig, filter, attempted/captured/revisit outcome, optional integration/video duration, and notes. Entries can be edited, removed with immediate undo, and exported as a JSON backup. They remain on this device/browser, work offline, and are preserved if a saved site is deleted. No entries means **unknown history**, not never photographed. A revisit adds a modest preference; it cannot override hazardous weather or inaccessible geometry. Backup import, image references, synchronized journal reconciliation, time-sensitive events and a conversational AI layer remain future work.
+
+See the [v1.13 release record](docs/releases/2026-09-19-v1.13-week-targets-journal.md) and [calculation notes](data/README.md).
+
+## v1.12 — Rigs and actual imaging opportunities (original release)
 
 The **Plan targets** section now offers **Z73**, **C8 / NexStar 8SE** and **UltraCat 56**. C8 has **native**, **f/6.3 reducer**, and **Barlow** configurations, with 2×/3× inside the Barlow choice. Choose the ASI533MC Pro or Canon R6 Mark II to update field of view and image scale. UltraCat initially uses a provisional shared ASI533 baseline; physical setup and camera adapters still need verification.
 
@@ -71,7 +83,7 @@ Tap **Plan targets** near the top, or scroll to **What could I image?** The plan
 
 See the [v1.11 release record](docs/releases/2026-09-19-v1.11-target-planning.md) for validation and the bounded next increment.
 
-## v1.10 — Foreca and forecast reliability
+## v1.10 — Foreca and forecast reliability (original release)
 
 - Uses Foreca Weather API at `weatherapi.foreca.net/api/v1`. The older `pfa.foreca.com` host rejects current Weather API tokens. Current and hourly calls request the full dataset. Precipitation is converted from millimeters to inches before hazard evaluation.
 - Foreca hourly weather remains usable if optional current conditions or air quality fail. Foreca is primary in the default mode; a failure explicitly identifies any Open-Meteo backup. Foreca-only mode never silently switches sources.
@@ -100,7 +112,7 @@ node tests/visual-server.js
 
 Open `http://127.0.0.1:4173/visual-test` for synthetic provider data. The fixture uses dummy credentials and overwrites settings **only on that localhost origin**. Service-worker registration is stubbed in the fixture; service-worker behavior is separately covered by tests. Open `/` for a normal local installation with its own settings.
 
-The current suite has 66 tests. Rebuilding the catalog additionally requires Python 3 (`python3 scripts/build-catalog.py`); normal app use and Node tests do not.
+The current suite has 81 tests. Rebuilding the catalog additionally requires Python 3 (`python3 scripts/build-catalog.py`); normal app use and Node tests do not.
 
 v1.11.1 fixes offline reloads from the **Plan targets** section anchor. The worker strips only the URL fragment before looking up the same cached document; provider and unrelated-site requests still bypass it.
 
