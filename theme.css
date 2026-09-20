@@ -1,0 +1,21 @@
+/* AstroImageNow Card Studio v0.3 direction: graphite, restrained glass, papaya/rust.
+   Adapted from the local design source; forecast values always come from the app. */
+:root{--bg:#101012;--panel:#1b1b1e;--panel2:#1c1c1f;--line:#38383c;--text:#f5f5f7;--muted:#aaaab2;--accent:#e99a65;--rust:#b86840;--silver:#c2c2c7}
+body{background:radial-gradient(ellipse at 80% -15%,rgba(184,104,64,.06),transparent 45%),var(--bg)}
+.card{background:linear-gradient(155deg,rgba(27,27,30,.97),rgba(14,14,16,.98));border-color:rgba(255,255,255,.10);border-radius:22px;box-shadow:0 16px 40px rgba(0,0,0,.22)}
+.btn{background:#242427;border-color:#46464b;transition:background .15s,border-color .15s}.btn:hover{background:#303034;border-color:#6c6260}.btn.primary{background:rgba(184,104,64,.18);border-color:var(--rust);color:#ffdbc1}.btn:disabled{opacity:.55;cursor:default}
+input,select{background:#18181b;border-color:#444449;color:var(--text);min-width:0}option{background:#1c1c1f}.field label{color:var(--silver)}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,.target-planner input:focus-visible,.target-planner select:focus-visible,.target-planner button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.night-chip,.bortle-ref,.info-button{background:#202024;border-color:#4b4b51;color:var(--silver)}.info-button:hover,.info-button:focus-visible{background:#343439;border-color:var(--accent)}
+.hero-copy,.advice,.tname,.prepare-line,.night-window,.planner-facts p{color:#d4d4db}
+.night-option{background:#1b1b1e;border-radius:14px}.night-option:hover{background:#252528}.night-option[aria-pressed="true"]{border-color:var(--accent);border-top-color:var(--night-status);box-shadow:0 0 0 2px rgba(233,154,101,.12)}
+.notice{background:#232327;border-color:#47474d;color:#e0e0e7}.diagnostic{background:#161619;color:#d4d4db}.info-dialog{background:#1c1c1f;border-color:#47474d}.info-dialog::backdrop{background:rgba(8,8,10,.75)}
+a,.planner-help a{color:var(--accent)}.target-band,.rig-summary{color:var(--accent)}.target-planner h2{font-size:26px;letter-spacing:-.025em}.planner-detail h3{font-size:23px;letter-spacing:-.02em}.rig-summary{font-size:14px;line-height:1.6;margin-bottom:4px}
+.rig-controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.rig-controls .field{min-width:0}
+.target-pick,.opportunity-panel,.site-result{background:linear-gradient(145deg,#2b2b2f,#1c1c20);border:1px solid rgba(255,255,255,.13);border-radius:15px;padding:16px;box-shadow:0 6px 18px rgba(0,0,0,.16)}
+.target-pick strong{font-size:16px}.target-pick .target-band{font-size:12px}.target-pick p{line-height:1.5}.opportunity-panel{margin:16px 0}.opportunity-panel p{margin:5px 0;line-height:1.5}.eyebrow{color:var(--muted);font-size:11px;letter-spacing:.08em;text-transform:uppercase}
+#plannerOpportunity{font-size:18px;font-weight:650}#plannerWindow{font-size:14px;line-height:1.5}.comparison-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.comparison-heading h3{font-size:18px}.site-comparison{margin-top:22px;padding-top:12px;border-top:1px solid var(--line)}.comparison-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}.site-result p{font-size:13px;line-height:1.5}.site-result .eyebrow{font-size:11px}.site-result h4{margin:0;color:var(--text)}
+[data-opportunity="supported"]{border-left:3px solid var(--green)}[data-opportunity="caution"]{border-left:3px solid var(--yellow)}[data-opportunity="limited"]{border-left:3px solid var(--red)}
+@supports ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.target-pick,.opportunity-panel,.site-result{background:linear-gradient(145deg,rgba(255,255,255,.09),rgba(255,255,255,.04));backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}}
+@media(max-width:680px){.rig-controls{grid-template-columns:1fr 1fr}.rig-controls select{font-size:14px;padding:11px 8px}.comparison-grid{grid-template-columns:1fr}.target-planner h2{font-size:24px}.planner-detail h3{font-size:21px}.card{border-radius:18px}.target-pick{padding:13px}.target-pick .btn{grid-row:1/5}}
+@media(prefers-reduced-motion:reduce){.btn{transition:none}}

@@ -35,7 +35,7 @@ Dimensions can describe a core, an infrared extent, one component, or a whole co
 
 [Astronomy Engine v2.1.19](https://github.com/cosinekitty/astronomy/tree/v2.1.19), by Don Cross, is vendored unchanged in `vendor/astronomy.browser.min.js`, with its [MIT license](../vendor/astronomy-LICENSE.txt). No CDN or runtime catalog service is required. It provides Sun/Moon vectors and the J2000-to-horizon transformation, including precession/nutation. This was selected over a Sun/Moon-only helper to support a coherent geometry layer and the later planetary increment. Both dashboard darkness grouping and target planning use it; they sample at different intervals.
 
-Nominal Z73/Flat73A 1.0×/ASI533MC Pro geometry uses 430 mm focal length, an 11.31 × 11.31 mm sensor, and 3.76 µm pixels, from [William Optics](https://support.williamoptics.com/products/zenithstar-73-iii) and [ZWO](https://www.zwoastro.com/product/asi533-pro-series/). This gives approximately **1.51° square and 1.80 arcseconds/pixel**. Ownership and commissioning status were reconciled with the current rig record on September 19, 2026: Elite Drawer OAG installed, spacing still requiring field verification, L-Pro the only confirmed imaging filter. An unfiltered baseline is also selectable. C8 lunar/planetary planning remains separate.
+Nominal Z73/Flat73A 1.0×/ASI533MC Pro geometry uses 430 mm focal length, an 11.31 × 11.31 mm sensor, and 3.76 µm pixels, from [William Optics](https://support.williamoptics.com/products/zenithstar-73-iii) and [ZWO](https://www.zwoastro.com/product/asi533-pro-series/). This gives approximately **1.51° square and 1.80 arcseconds/pixel**. Ownership and commissioning status were reconciled with the current rig record on September 19, 2026: Elite Drawer OAG installed, spacing still requiring field verification, L-Pro the only confirmed imaging filter. An unfiltered baseline is also selectable. Additional configurations and lunar/planetary rules are documented below.
 
 ## Calculation and limits
 
@@ -47,7 +47,38 @@ Nominal Z73/Flat73A 1.0×/ASI533MC Pro geometry uses 430 mm focal length, an 11.
 - Site advice uses the saved Bortle value as context, never a measured nightly value. Highly light-pollution-sensitive objects receive a dark-sky caution at Bortle 6–9; unknown site brightness stays unknown.
 - Framing uses a conservative bounding rectangle, allowing camera rotation. If the minor dimension is missing it uses the major diameter on both axes. Ratios over 1 require a crop/mosaic, over 0.85 are tight, under 0.25 are small. Nominal geometry excludes edge cropping, spacing defects, surrounding faint structure and composition. Inspect a survey image before committing.
 - Candidate ordering is internal and heuristic: 5 per useful hour + peak dark altitude/10, minus 15 for Moon caution, 12 for dark-sky priority, and framing penalties of 20 for mosaic, 12 for small, 8 for uncertain, 4 for tight. The app presents reasons rather than a numeric target-quality score.
-- Weather is a separate **night-level** context banner. Target windows are not intersected with an hourly cloud forecast in this increment. Stale, incomplete and absent forecasts are explicit. A good geometric window cannot override a weather hazard.
+- v1.12 adds target-specific forecast intersections and site comparison as documented below. A good geometric window cannot override a weather hazard.
 - Saved assignments include date, site/target/rig IDs, filter, altitude threshold and planned status. They remain browser-local, do not synchronize across devices, and never command a telescope or create calendar events. No API credentials or exact site coordinates are copied into plan records. Deleting an observing-site profile also removes that site's assignments from the displayed plan list.
 
 `provenance.json` records imported-source and vendored-library SHA-256 hashes. Runtime code is separate from the CC BY-SA catalog data. Tests cover geometry against an independent J2000 meridian reference, epoch transformation, Moon-horizon rules, DST, no-darkness cases, framing, local plan validation, and app cache coverage.
+
+
+## v1.12 equipment and moving targets
+
+Nominal optical specifications (verified September 19, 2026):
+
+| Optical configuration | Focal length | Nominal focal ratio | Source |
+| --- | ---: | ---: | --- |
+| Z73 + Flat73A 1× | 430 mm | f/5.9 | William Optics / existing reconciled train above |
+| UltraCat 56 | 269 mm | f/4.8 | [William Optics support](https://support.williamoptics.com/products/ultra-cat-56) |
+| C8 native | 2032 mm | f/10 | [Celestron NexStar 8SE](https://www.celestron.com/products/nexstar-8se-computerized-telescope) |
+| C8 + 94175 reducer | 1280.16 mm | f/6.3 | [Celestron Reducer/Corrector](https://www.celestron.com/products/reducer-corrector), nominal 0.63× |
+| C8 + 2× / 3× Barlow | 4064 / 6096 mm | f/20 / f/30 | Owned [X-Cel LX 2×](https://www.celestron.com/products/x-cel-lx-2x-barlow-lens-125in), [3×](https://www.celestron.com/products/x-cel-lx-3x-barlow-lens-125in); nominal multipliers |
+
+The ASI533 sensor is 11.31 mm square, with 3.76 μm pixels. The [Canon EOS R6 Mark II](https://www.usa.canon.com/support/p/eos-r6-mark-ii) uses a nominal 36 × 24 mm full still-image sensor and 6 μm pixels. Field width/height use `2 atan(sensor dimension / (2 focal length))`; scale uses `206.264806 × pixel μm / focal mm`. Actual C8 focal length/reduction/Barlow factor depend on optical spacing. Vignetting, video ROI/crops and mechanical compatibility are not modeled. Full nominal field is not a guarantee of a fully illuminated, corrected image. UltraCat/ASI533 is approximately 2.41° square at 2.88″/pixel; the catalog's 150′ M45 extent remains slightly wider.
+
+`solar-system.js` is authored object metadata, not fixed-coordinate OpenNGC data. Moon/planet positions use Astronomy Engine's topocentric equatorial vector recalculated at each sample, transformed to the horizon without refraction. The observer's parallax is included. Planning requires Sun ≤ −6° and the same selectable target altitude. No daytime/solar observing, disk-size, opposition, ring-angle, satellite-event or capture-mode model is included. Planetary ranking is visibility-based, not an assertion that each visible planet has a useful apparent diameter.
+
+## v1.12 forecast intersection
+
+For each geometric 10-minute sample, find the immediately preceding/following hourly astronomy and weather samples. Both must support the interval; a gap over one hour, a missing endpoint or time outside coverage is unknown. An exact hourly time can use that sample alone, but a window still requires at least two contiguous geometry samples. Past time is excluded. Weather/astronomy retrievals older than three hours, failed/restored snapshots, and implausibly future-dated retrievals cannot support a window.
+
+Current **editorial planning presets**, not calibrated success probabilities:
+
+- Cloud ≤40%, sustained wind ≤12 mph. Deep sky requires Astrospheric transparency raw value ≤13; long focal length (≥1000 mm) also requires seeing ≥3/5.
+- Lunar/planetary requires seeing ≥3/5 at native/reduced focal length and ≥4/5 with a Barlow. Transparency is not a hard planetary gate. These presets are not a claim that all pixel scales are critically sampled or all targets benefit from a Barlow.
+- Reuse the dashboard's weather hazards at each hourly endpoint: storm, fog/very low visibility, likely rain, strong gusts block; moderate rain/haze/air-quality/gust cautions stay cautionary. All required rain, precipitation, gust, visibility and storm indicators must be present. Cumulative rain elsewhere in the night can still make the dashboard's whole-night operational verdict more conservative.
+- A known dew margin below 4°F, or unavailable dew margin, is cautionary. Moon heuristics apply per sample to deep sky; lunar/planetary imaging is not penalized for imaging the Moon itself.
+- Prefer the longest fully supported window, otherwise show the longest caution window. Supported/caution candidates precede incomplete/limited/no-geometry candidates, then use the existing geometric heuristic ordering. Show reasons outside supported intervals separately; no future coverage is invented from an earlier night.
+
+The explicit comparison action requests other saved sites using their own context key (site ID, coordinates, weather-source choice). It does not switch global dashboard state. Cancellation generations reject late responses. Browser-local snapshots contain normalized forecasts, not API credentials. Restored site forecasts are stale until reloaded. User locations and precise addresses remain outside repository data.

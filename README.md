@@ -34,7 +34,7 @@ For a true Home Screen / standalone app experience, serve this folder over HTTPS
 - Compact current temperature, selected-night low, precipitation, visibility, fog/storm, gust, and air-quality context
 - Educational condition explanations behind small information buttons
 - Target-aware filter guidance and concise preparation reminders
-- A searchable 31-object deep-sky catalog with target/date/site planning, Moon geometry, Z73 framing, and local saved assignments
+- A searchable 31-object deep-sky catalog with target/date/site planning, Moon geometry, multi-rig framing, and local saved assignments
 
 ## Scoring philosophy
 
@@ -47,7 +47,17 @@ This build is intended for private personal devices. For public/shared hosting, 
 The browser sends the exact selected coordinates to Astrospheric for the astronomy forecast. Supplemental weather requests use coordinates rounded to two decimal places. The Astrospheric key is sent only to Astrospheric; the Foreca token is sent only to Foreca. Weather data is provided by [Foreca](https://www.foreca.com/) or [Open-Meteo](https://open-meteo.com/), according to the selected source. Open-Meteo air-quality data incorporates Copernicus Atmosphere Monitoring Service (CAMS) forecasts.
 
 
-## v1.11 — Target, date and site planning
+## v1.12 — Rigs and actual imaging opportunities
+
+The **Plan targets** section now offers **Z73**, **C8 / NexStar 8SE** and **UltraCat 56**. C8 has **native**, **f/6.3 reducer**, and **Barlow** configurations, with 2×/3× inside the Barlow choice. Choose the ASI533MC Pro or Canon R6 Mark II to update field of view and image scale. UltraCat initially uses a provisional shared ASI533 baseline; physical setup and camera adapters still need verification.
+
+**Deep sky** retains the 31-object catalog. **Moon & planets** computes moving positions for Moon, Venus, Mars, Jupiter and Saturn and uses seeing-oriented conditions and civil twilight. The dashboard score remains the wide-field overview.
+
+Each target now distinguishes its geometric window from its **forecast-supported window**, checking actual hourly coverage, cloud, transparency/seeing, wind, rain/storm/fog/gust hazards and Moon/dew caution. Missing/stale data cannot create a favorable interval. **Refresh site comparison** loads independent forecasts for the other saved locations, keeping the active dashboard location unchanged.
+
+Graphite surfaces, subtle glass panels and papaya/rust accents carry forward the local Card Studio v0.3 design, with semantic condition colors preserved. See the [v1.12 release and continuation record](docs/releases/2026-09-19-v1.12-multi-rig-opportunities.md) and [calculation notes](data/README.md). Personal capture history, event-aware ranking and automatic choice across rigs remain planned follow-ons.
+
+## v1.11 — Target, date and site planning (original release)
 
 Tap **Plan targets** near the top, or scroll to **What could I image?** The planner follows the selected forecast night and observing site. Choose a different date to explore another season; **Follow selected night** reconnects it to the forecast cards.
 
@@ -90,7 +100,7 @@ node tests/visual-server.js
 
 Open `http://127.0.0.1:4173/visual-test` for synthetic provider data. The fixture uses dummy credentials and overwrites settings **only on that localhost origin**. Service-worker registration is stubbed in the fixture; service-worker behavior is separately covered by tests. Open `/` for a normal local installation with its own settings.
 
-The current suite has 52 tests. Rebuilding the catalog additionally requires Python 3 (`python3 scripts/build-catalog.py`); normal app use and Node tests do not.
+The current suite has 66 tests. Rebuilding the catalog additionally requires Python 3 (`python3 scripts/build-catalog.py`); normal app use and Node tests do not.
 
 v1.11.1 fixes offline reloads from the **Plan targets** section anchor. The worker strips only the URL fragment before looking up the same cached document; provider and unrelated-site requests still bypass it.
 
