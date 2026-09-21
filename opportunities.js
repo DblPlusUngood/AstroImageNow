@@ -55,16 +55,17 @@ const ImagingOpportunities=(()=>{
     if(estimated)return{kind:"estimated",estimated:true,reason:mode==="planetary"?"Weather estimate; seeing may be unavailable":"Weather estimate; transparency or seeing may be unavailable"};
     return{kind:"supported",reason:mode==="planetary"?"Cloud, seeing and wind align":"Cloud, transparency and wind align"};
   }
-  function match(result,data,rig,mode,filter=null){
+  function match(result,data,rig,mode,filter=null,minWindowMinutes=0){
     const samples=result.samples.map(s=>{
       let assessment=assess(s.ms,data,rig,mode);
       if(mode!=="planetary"&&["supported","estimated"].includes(assessment.kind)&&P.moonCaution(result.target,s,filter))assessment={kind:"caution",reason:"Moonlight caution",estimated:assessment.estimated};
       return{...s,assessment};
     });
     const eligible=s=>s.sunAltitude<=result.threshold&&s.altitude>=result.minAltitude&&result.threshold!==null;
-    const supported=P.longestWindow(samples,s=>eligible(s)&&s.assessment.kind==="supported");
-    const estimate=P.longestWindow(samples,s=>eligible(s)&&["supported","estimated"].includes(s.assessment.kind));
-    const caution=P.longestWindow(samples,s=>eligible(s)&&["supported","estimated","caution"].includes(s.assessment.kind));
+    const usable=window=>window&&window.minutes>=minWindowMinutes?window:null;
+    const supported=usable(P.longestWindow(samples,s=>eligible(s)&&s.assessment.kind==="supported"));
+    const estimate=usable(P.longestWindow(samples,s=>eligible(s)&&["supported","estimated"].includes(s.assessment.kind)));
+    const caution=usable(P.longestWindow(samples,s=>eligible(s)&&["supported","estimated","caution"].includes(s.assessment.kind)));
     const window=supported||estimate||caution;
     const counts=new Map();
     for(const s of samples.filter(eligible))if(s.assessment.kind!=="supported")counts.set(s.assessment.reason,(counts.get(s.assessment.reason)||0)+1);

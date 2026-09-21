@@ -15,7 +15,7 @@ test("service worker installs the provider script and deletes only obsolete app 
   w.handlers.install({waitUntil:p=>pending=p});await pending;
   assert.ok(w.cached.includes("./providers.js"));assert.equal(w.skipped,false);
   w.handlers.activate({waitUntil:p=>pending=p});await pending;
-  assert.deepEqual(w.deleted,["astro-image-now-v1.9-release-1","astro-image-now-v1.10.0","astro-image-now-v1.11.0","astro-image-now-v1.11.1","astro-image-now-v1.11.2","astro-image-now-v1.12.0"]);
+  assert.deepEqual(w.deleted,["astro-image-now-v1.9-release-1","astro-image-now-v1.10.0","astro-image-now-v1.11.0","astro-image-now-v1.11.1","astro-image-now-v1.11.2","astro-image-now-v1.12.0","astro-image-now-v1.13.0"]);
   w.handlers.message({data:{type:"APPLY_UPDATE"}});assert.equal(w.skipped,true);
 });
 test("offline section-anchor navigation uses the same cached document",async()=>{
@@ -28,7 +28,7 @@ test("offline section-anchor navigation uses the same cached document",async()=>
 test("offline shell includes all planning dependencies and each cached asset exists",async()=>{
   const w=worker();let pending;
   w.handlers.install({waitUntil:p=>pending=p});await pending;
-  for(const asset of ['filters.js','forecast-model.js','journal.js','advisor.js','planner.js','planner-ui.js','equipment.js','opportunities.js','site-forecasts.js','theme.css','data/solar-system.js','data/targets.js','vendor/astronomy.browser.min.js'])assert.ok(w.cached.includes('./'+asset));
+  for(const asset of ['filters.js','forecast-model.js','journal.js','advisor.js','night-plan.js','planner.js','planner-ui.js','equipment.js','opportunities.js','site-forecasts.js','theme.css','data/solar-system.js','data/targets.js','vendor/astronomy.browser.min.js'])assert.ok(w.cached.includes('./'+asset));
   for(const asset of w.cached)assert.ok(fs.existsSync(require('node:path').resolve(__dirname,'..',asset)),asset);
 });
 test("service worker intercepts only its own shell, never authenticated or other-site requests",async()=>{

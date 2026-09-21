@@ -86,11 +86,12 @@ test("offline refresh retains same-site data as stale and preserves selected dat
   assert.ok(!app.state.diagnostic.includes("private-fixture-token"));
 });
 
-test("switching sites never labels the previous site's cached weather as the new site",async t=>{
+test("switching sites offline retains only the new site's paired cache, marked stale",async t=>{
   const {nodes,mode}=setup(t);await app.refresh();
+  const cached=app.siteStore().get(app.state.settings.locations[1],app.state.settings);
   app.state.settings.activeLocationId="jgap";mode.offline=true;await app.refresh();
-  assert.equal(app.state.weather,null);assert.equal(app.state.forecast,null);
-  assert.equal(nodes.get("statusBadge").textContent,"UNKNOWN");
+  assert.equal(app.state.weather,cached.weather);assert.equal(app.state.forecast,cached.forecast);
+  assert.equal(nodes.get("statusBadge").textContent,"STALE");
 });
 
 test("late results from an aborted refresh cannot overwrite the next location",async t=>{
@@ -98,8 +99,9 @@ test("late results from an aborted refresh cannot overwrite the next location",a
   let release;
   const held=new Promise(resolve=>{release=resolve});
   const fixtureWeather=p.normalizeForecaWeather(null,{forecast:times.map(time=>({time,temperature:55,dewPoint:40,cloudiness:5,windSpeed:4,precipProb:0,precipAccum:0,windGust:5,visibility:16000,thunderProb:0}))});
+  let heldHome=false;
   t.mock.method(p,"supplemental",async location=>{
-    if(location.lat===40)await held;
+    if(location.lat===40&&!heldHome){heldHome=true;await held}
     return {...fixtureWeather,meta:{...fixtureWeather.meta,site:location.lat}};
   });
   const first=app.refresh();
@@ -137,4 +139,34 @@ test("target planning keeps absent, stale, hazardous and incomplete weather expl
   assert.match(app.targetPlanningWeather(nights,date,zone).message,/stale/);
   app.state.weatherStale=false;app.state.weather=null;
   assert.match(app.targetPlanningWeather(nights,date,zone).message,/not fully assessed/);
+});
+
+test('one refresh fetches each fixed site once and extra saved sites are left alone',async t=>{
+  setup(t);app.state.settings.locations.push({id:'other',name:'Other',lat:42,lon:-80});
+  const original=JSON.stringify(app.state.settings);await app.refresh();
+  const calls=global.fetch.mock.calls,astro=calls.filter(c=>String(c.arguments[0]).includes('/GetForecastData'));
+  assert.equal(astro.length,4);assert.equal(astro.filter(c=>JSON.parse(c.arguments[1].body).Latitude===40).length,2);
+  for(const endpoint of['/api/v1/current/','/api/v1/forecast/hourly/','/api/v1/air-quality/'])assert.equal(calls.filter(c=>String(c.arguments[0]).includes(endpoint)).length,2);
+  assert.equal(JSON.stringify(app.state.settings),original);assert.equal(app.siteStore().get(app.state.settings.locations[2],app.state.settings),null);
+});
+
+test('changing to the freshly paired site reuses its cache without more requests',async t=>{
+  setup(t);await app.refresh();const calls=global.fetch.mock.callCount();
+  const jgap=app.siteStore().get(app.state.settings.locations[1],app.state.settings);
+  assert.equal(app.selectLocation('jgap',true),true);assert.equal(global.fetch.mock.callCount(),calls);
+  assert.equal(app.state.weather,jgap.weather);assert.equal(app.state.dataContext,app.contextFor());assert.equal(app.state.weatherStale,false);
+  assert.equal(app.selectLocation('missing'),false);
+});
+
+test('an independent comparison-site weather failure preserves the active successful forecast',async t=>{
+  setup(t);const original=p.supplemental;
+  t.mock.method(p,'supplemental',async(site,...args)=>{if(site.id==='jgap')throw Error('comparison unavailable');return original(site,...args)});
+  await app.refresh();assert.equal(app.state.weatherStale,false);assert.ok(app.state.weather);
+  const away=app.siteStore().get(app.state.settings.locations[1],app.state.settings);assert.equal(away.weather,null);assert.equal(away.weatherStale,false);assert.ok(away.forecast);
+});
+
+test('repeated failed refreshes at changed coordinates never reuse a different context last-good snapshot',async t=>{
+  const {mode}=setup(t);await app.refresh();const oldContext=app.state.lastGood.context;
+  app.state.settings.locations[0].lat=41;mode.offline=true;
+  for(let i=0;i<2;i++){await app.refresh();assert.equal(app.state.forecast,null);assert.equal(app.state.weather,null);assert.notEqual(app.state.dataContext,oldContext)}
 });

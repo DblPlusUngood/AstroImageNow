@@ -21,7 +21,7 @@ const TargetAdvisor=(()=>{
         const chosen=policy==="selected"?filter:recommended.filter;
         const result=P.evaluate(target,context,choice.rig,site,{minAltitude,filter:chosen});
         if(!result.geometryWindow)continue;
-        const match=O.match(result,data,choice.rig,choice.mode,chosen),history=J.history(journal,target.id);
+        const match=O.match(result,data,choice.rig,choice.mode,chosen,choice.mode==="planetary"?20:60),history=J.history(journal,target.id);
         const available=match.window?.minutes||0;
         const quality={supported:100,estimated:65,caution:45,unknown:0,stale:0,limited:-70,geometry:-100}[match.kind];
         const frame={comfortable:8,tight:0,small:-8,mosaic:-24,unknown:-5}[result.framing.kind];
@@ -34,6 +34,7 @@ const TargetAdvisor=(()=>{
         if(result.moonRisk)reasons.push("Moonlight limits faint contrast.");
         if(history.state!=="unknown")reasons.push(history.label+".");
         if(choice.rig.telescopeId==="ultracat56")reasons.push("Verify the new rig's mount and camera connection.");
+        if(choice.rig.telescopeId==="c8")reasons.push("Verify camera adapter, focus and clearance.");
         if(choice.rig.telescopeId==="c8"&&choice.mode==="deep-sky")reasons.push("Use short exposures: the 8SE alt-az mount has field rotation.");
         candidates.push({result,match,rig:choice.rig,mode:choice.mode,filter:chosen,rank,history,reasons});
       }
@@ -44,7 +45,7 @@ const TargetAdvisor=(()=>{
     let heading=promising?"A few good starting points":"Keep these on the planning list";
     let summary=promising?(moonBright?"The bright Moon is up for part of the night. Favor bright subjects or emission lines when it interferes.":"Compare visibility, conditions and framing before choosing a rig."):data.stale?"Refresh conditions before deciding what to set up.":"No strong conditions match yet. These are visible candidates, not a setup recommendation.";
     if(policy==="selected")heading=`Ideas for your ${scope.shortName}`;
-    return{heading,summary,picks,moonBright,promising};
+    return{heading,summary,picks,candidates,moonBright,promising};
   }
   return{propose};
 })();

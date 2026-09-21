@@ -53,7 +53,9 @@
   };
 
   const json=data=>Promise.resolve(new Response(JSON.stringify(data),{status:200,headers:{"Content-Type":"application/json"}}));
+  window.visualRequestCount=0;
   window.fetch=(input,options={})=>{
+    window.visualRequestCount++;
     const url=String(input);
     if(url.includes("weatherapi.foreca.net/api/v1/current/"))return json({current:{temperature:61,feelsLikeTemp:60,relHumidity:72,symbolPhrase:"partly cloudy",precipAccum:0,visibility:19312,windGust:8}});
     if(url.includes("weatherapi.foreca.net/api/v1/forecast/hourly/"))return json({forecast:weatherTimes.slice(0,168).map((time,index)=>({
