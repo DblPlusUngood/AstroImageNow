@@ -2,11 +2,12 @@
 
 const Providers=typeof module!=="undefined"?require("./providers.js"):AstroProviders;
 const API_BASE=Providers.ASTRO_BASE;
-const APP_VERSION="1.13.0";
+const APP_VERSION="1.14.0";
 const SiteStore=typeof module!=="undefined"?require("./site-forecasts.js"):SiteForecasts;
-let siteForecastStore=null,comparisonBusy=false,comparisonRun=0;
+let siteForecastStore=null,siteStorage=null,comparisonBusy=false;
 function siteStore(){
-  if(!siteForecastStore){let storage;try{storage=globalThis.localStorage}catch{}siteForecastStore=SiteStore.create(storage)}
+  let storage;try{storage=globalThis.localStorage}catch{}
+  if(!siteForecastStore||storage!==siteStorage){siteForecastStore?.cancel();siteStorage=storage;siteForecastStore=SiteStore.create(storage)}
   return siteForecastStore;
 }
 const Forecast=typeof module!=="undefined"?require("./forecast-model.js"):ForecastModel;
@@ -626,8 +627,7 @@ function nightLabelFor(rows,index,timeZone){
 function windowEnd(rows,best){return rows[best.end]?.UTCForecastHour||null}
 
 function renderOutlook(nights,timeZone){
-  const threshold=alertThresholdFor();
-  $("outlookSub").textContent=`${nights.length} upcoming ${nights.length===1?"night":"nights"} available · ${threshold.label} alert threshold (${threshold.score}+)`;
+  $("outlookSub").textContent="";
   $("nightOutlook").innerHTML=nights.map((rows,index)=>{
     const summary=summaryForNight(rows,moonForNight(index));
     const weather=weatherSummaryForRows(rows);
@@ -676,23 +676,21 @@ function renderWeatherAndPlan(rows,timeZone,components){
     if(weather.visibilityMiles!==null)diagnostic.push(`Visibility ${weather.visibilityMiles.toFixed(weather.visibilityMiles<10?1:0)} mi`);
     if(weather.gust!==null)diagnostic.push(`Gusts to ${Math.round(weather.gust)} mph`);
     if(weather.aqi!==null)diagnostic.push(`Air quality index ${Math.round(weather.aqi)}`);
-    if(Number.isFinite(components.transparency)&&components.transparency<48&&weather.visibilityMiles!==null){
-      diagnostic.push(weather.visibilityMiles<6
-        ?"Reduced surface visibility may be contributing to poor transparency"
-        :"Surface visibility looks normal; elevated haze, moisture, or the astronomy model may explain poor transparency");
-    }
+    $("weatherDetails").textContent=diagnostic.join(" · ");
     const note=$("weatherNote");
     const source=state.weather?.meta||{label:"Supplemental weather source",url:"#"};
-    const prefix=[state.weatherStale?"STALE — last saved weather; refresh failed":null,`Retrieved ${fmtUpdated(source.fetchedAt)}`,state.weatherNotice,state.weatherError,...diagnostic].filter(Boolean).join(" · ");
+    const prefix=[state.weatherStale?"Saved weather · refresh required":null,state.weatherNotice,state.weatherError].filter(Boolean).join(" · ");
     note.replaceChildren();
     if(prefix)note.append(`${prefix} · `);
+    note.append("Forecast by ");
+    if(state.forecast){const astro=document.createElement("a");astro.href="https://www.astrospheric.com/";astro.target="_blank";astro.rel="noopener";astro.textContent="Astrospheric";note.append(astro," + ")}
     const link=document.createElement("a");
     link.href=source.url;
     link.target="_blank";
     link.rel="noopener";
-    link.textContent=source.label;
-    note.append(link);
-    if(source.provider==="open-meteo"&&source.hasAirQuality)note.append(" · Air-quality data incorporates CAMS");
+    link.textContent=source.provider==="foreca"?"Foreca":source.provider==="open-meteo"?"Open-Meteo":source.label;
+    note.append(link,` · ${fmtUpdated(source.fetchedAt)}`);
+    if(source.provider==="open-meteo"&&source.hasAirQuality)$("weatherDetails").textContent+=" · Air-quality data incorporates CAMS";
   }else{
     $("weatherNow").textContent="—";
     $("weatherLow").textContent="—";
@@ -701,6 +699,7 @@ function renderWeatherAndPlan(rows,timeZone,components){
     $("weatherWatch").style.color="var(--muted)";
     $("weatherStrip").style.borderLeft="1px solid var(--line)";
     $("weatherNote").textContent=state.weatherError||"No weather forecast overlaps this selected night.";
+    $("weatherDetails").textContent="No weather detail for this night.";
   }
 
   $("prepareLine").textContent=`Prepare: ${preparationGuidance(weather,components).join(" · ")}`;
@@ -723,7 +722,7 @@ function render(){
   if(!location)return;
   const timeZone=forecast.TimeZone||location.timeZone||Intl.DateTimeFormat().resolvedOptions().timeZone;
   const nights=availableNights();
-  $("headerSub").textContent=`${location.name} · Forecast retrieved ${fmtUpdated()}`;
+  $("headerSub").textContent=location.name;
   renderQuickLocationSelect();
   renderDiagnostics();
   const failed=Object.values(state.providerStatus).filter(p=>p.status==="failed"&&!p.id.startsWith("foreca")&&!p.id.includes("air"));
@@ -863,7 +862,8 @@ function render(){
 
   const creditRecords=Object.values(state.providerStatus).filter(record=>Number.isFinite(record.creditsRemaining));
   const credits=creditRecords.length?Math.min(...creditRecords.map(r=>r.creditsRemaining)):"—";
-  $("footer").textContent=`AstroImageNow ${APP_VERSION} · Conditions score · ≈ estimated · Model ${forecast.ModelTime||"unavailable"} · API credits remaining ${credits}`;
+  $("forecastModelDetails").textContent=`Model ${forecast.ModelTime||"unavailable"} · API credits remaining ${credits}`;
+  $("footer").textContent=`AstroImageNow ${APP_VERSION}`;
   renderTargetPlanning(nights,timeZone);
 }
 
@@ -874,15 +874,23 @@ function renderTargetPlanning(nights,timeZone){
     nightDate:nightKey(nights[state.selectedNightIndex]||[],timeZone)||Planner.dateAt(Date.now(),timeZone),
     conditionsForDate:date=>targetPlanningWeather(nights,date,timeZone),
     snapshotForSite:site=>site.id===location.id&&state.dataContext===SiteStore.key(site,state.settings)?{forecast:state.forecast,weather:state.weather,forecastStale:state.forecastStale,weatherStale:state.weatherStale}:siteStore().get(site,state.settings),
-    summarizeWeather:weatherSummaryForRows,comparisonBusy,refreshComparison:refreshSiteComparison
+    summarizeWeather:weatherSummaryForRows,comparisonBusy,selectSite:id=>selectLocation(id,true)
   });
 }
 
-async function refreshSiteComparison(){
-  if(comparisonBusy)return;
-  const run=++comparisonRun;comparisonBusy=true;render();
-  try{await siteStore().refresh(state.settings.locations.filter(site=>site.id!==state.settings.activeLocationId),state.settings,()=>render())}
-  finally{if(run===comparisonRun){comparisonBusy=false;render()}}
+function selectLocation(id,preserveNight=false){
+  const site=state.settings.locations.find(s=>s.id===id);
+  if(!site)return false;
+  if(id===state.settings.activeLocationId)return true;
+  const cached=siteStore().get(site,state.settings),fresh=data=>data&&Date.now()-Date.parse(data.meta?.fetchedAt)<=3*3600000&&Date.now()-Date.parse(data.meta?.fetchedAt)>=-60000;
+  saveSettings({...state.settings,activeLocationId:id,...!preserveNight?{selectedNightKey:null}:{}});
+  if(!preserveNight)state.selectedNightIndex=0;
+  if(cached&&!cached.forecastStale&&!cached.weatherStale&&fresh(cached.weather)&&(!cached.forecast||fresh(cached.forecast))){
+    state.refreshId++;state.refreshController?.abort();siteStore().cancel();comparisonBusy=false;
+    Object.assign(state,{forecast:cached.forecast,weather:cached.weather,forecastStale:false,weatherStale:false,moons:[],providerStatus:{},weatherError:"",weatherNotice:cached.weather.meta.notice||"",dataContext:contextFor(),fetchedAt:cached.weather.meta.fetchedAt});
+    saveSnapshot();$("refreshBtn").disabled=false;$("refreshBtn").textContent="Refresh";render();
+  }else refresh();
+  return true;
 }
 
 function targetPlanningWeather(nights,date,timeZone){
@@ -934,10 +942,15 @@ function renderDiagnostics(){
   state.diagnostic=JSON.stringify(diagnosticSummary(),null,2);
   $("diagBox").textContent=state.diagnostic;
   $("diagWrap").classList.remove("hidden");
+  const pair=SiteStore.pair(state.settings?.locations);
+  $("forecastSourceDetails").textContent=pair.sites.map(site=>{
+    const snapshot=site.id===state.settings?.activeLocationId?state:siteStore().get(site,state.settings);
+    return `${site===pair.home?"Home":"JGAP"}: ${[["Astrospheric",snapshot?.forecast],[snapshot?.weather?.meta?.provider==="foreca"?"Foreca":"Weather",snapshot?.weather]].map(([name,data])=>`${name} ${data?.meta?.fetchedAt?fmtUpdated(data.meta.fetchedAt):"unavailable"}`).join(" · ")}${snapshot?.forecastStale||snapshot?.weatherStale?" · saved / stale":""}`;
+  }).join("\n");
 }
 
 async function refresh(){
-  siteStore().cancel();comparisonRun++;comparisonBusy=false;
+  siteStore().cancel();comparisonBusy=true;
   const id=++state.refreshId;
   state.refreshController?.abort();
   const controller=new AbortController();
@@ -945,7 +958,7 @@ async function refresh(){
   const settings={...state.settings};
   const location={...activeLocation()};
   const contextKey=contextFor(settings);
-  const saved=state.dataContext===contextKey?state.lastGood:readSnapshot(contextKey);
+  const saved=(state.lastGood?.context===contextKey?state.lastGood:readSnapshot(contextKey))||siteStore().get(location,settings);
   state.dataContext=contextKey;
   state.forecast=saved?.forecast||null;
   state.weather=saved?.weather||null;
@@ -964,6 +977,7 @@ async function refresh(){
   const common={Latitude:location.lat,Longitude:location.lon};
   render();
   try{
+    const comparisonTask=siteStore().refresh(SiteStore.pair(settings.locations).sites.filter(site=>site.id!==location.id),settings,()=>{if(current())render()});
     const weatherTask=Providers.capture("weather",()=>fetchSupplementalWeather(location,settings,context),context).then(result=>{
       if(!current())return;
       if(result.data){
@@ -985,13 +999,14 @@ async function refresh(){
       }
       render();
     });
-    await Promise.all([weatherTask,astronomyTask]);
+    await Promise.all([weatherTask,astronomyTask,comparisonTask]);
     if(!current())return;
     if(state.forecast&&!state.forecastStale||state.weather&&!state.weatherStale)saveSnapshot();
   }catch(error){
     if(current()){$("errorBox").textContent="Refresh could not finish. Open diagnostics for provider status.";$("errorBox").classList.remove("hidden")}
   }finally{
     if(current()){
+      comparisonBusy=false;
       $("refreshBtn").disabled=false;$("refreshBtn").textContent="Refresh";
       render();renderDiagnostics();
     }
@@ -1250,10 +1265,7 @@ function initialize(){
   });
 
   $("quickLocationSelect").addEventListener("change",event=>{
-    if(!state.settings?.locations?.some(location=>location.id===event.target.value))return;
-    saveSettings({...state.settings,activeLocationId:event.target.value,selectedNightKey:null});
-    state.selectedNightIndex=0;
-    refresh();
+    selectLocation(event.target.value);
   });
 
   $("refreshBtn").addEventListener("click",refresh);
@@ -1285,6 +1297,8 @@ if(typeof module!=="undefined"){
   module.exports={
     state,
     refresh,
+    selectLocation,
+    siteStore,
     render,
     diagnosticSummary,
     targetPlanningWeather,

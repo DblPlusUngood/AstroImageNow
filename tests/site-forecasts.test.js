@@ -37,3 +37,9 @@ test('comparison cancellation stops before another site request and leaves cache
   const pending=store.refresh(sites,settings);await entered;store.cancel();release();await pending;
   assert.deepEqual(called,['home']);assert.equal(store.get(sites[0],settings).weatherStale,true);assert.equal(store.get(sites[1],settings),null);
 });
+test('fixed comparison resolves saved generated IDs without altering profiles or guessing among duplicates',()=>{
+  const home={id:'uuid-1',name:'Home (Clintonville, OH)',bortle:9,lat:40,lon:-83},jgap={id:'uuid-2',name:'John Glenn Astro Park',bortle:3,lat:39,lon:-82};
+  const profiles=[{id:'other',name:'Other site'},jgap,home],before=JSON.stringify(profiles),pair=S.pair(profiles);
+  assert.equal(pair.home,home);assert.equal(pair.jgap,jgap);assert.deepEqual(pair.sites,[home,jgap]);assert.equal(JSON.stringify(profiles),before);
+  assert.deepEqual(S.pair([home]).missing,['JGAP']);assert.equal(S.pair([...profiles,{id:'uuid-3',name:'Home copy'}]).home,null);
+});

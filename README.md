@@ -44,10 +44,22 @@ This is an app-derived astrophotography assessment, not an official Astrospheric
 
 This build is intended for private personal devices. For public/shared hosting, do not use browser storage for API credentials; move authenticated API calls behind a server-side proxy and keep credentials as server secrets.
 
-The browser sends the exact selected coordinates to Astrospheric for the astronomy forecast. Supplemental weather requests use coordinates rounded to two decimal places. The Astrospheric key is sent only to Astrospheric; the Foreca token is sent only to Foreca. Weather data is provided by [Foreca](https://www.foreca.com/) or [Open-Meteo](https://open-meteo.com/), according to the selected source. Open-Meteo air-quality data incorporates Copernicus Atmosphere Monitoring Service (CAMS) forecasts.
+A normal refresh requests the active site and the fixed Home/JGAP comparison pair. The browser sends those profiles’ exact coordinates to Astrospheric for the astronomy forecast. Supplemental weather requests use coordinates rounded to two decimal places. The Astrospheric key is sent only to Astrospheric; the Foreca token is sent only to Foreca. Weather data is provided by [Foreca](https://www.foreca.com/) or [Open-Meteo](https://open-meteo.com/), according to the selected source. Open-Meteo air-quality data incorporates Copernicus Atmosphere Monitoring Service (CAMS) forecasts.
 
 
-## v1.13 — A full week, Imaging Targets and an observing journal
+## v1.14 — A night plan and Travel Site Comparison
+
+The normal **Refresh** updates the saved **Home + JGAP** profiles together. Each site uses its own provider response. Changing dates, targets, rigs or filters recalculates locally; switching to a freshly cached paired site also avoids a repeat request. The comparison recognizes existing profile IDs or Home/JGAP names and never supplies or replaces personal coordinates. Ambiguous/missing profiles need attention in Settings.
+
+**Imaging Targets** now gives a concise **Plan for Home / Consider JGAP / Neither site for this plan** recommendation, or leaves the comparison undecided when forecasts are stale or incomplete. It offers a primary target and one useful alternative, with rig, filter and window. **Use this plan** selects the recommended site and setup; saving a planned target or logging a session remains an explicit separate action. Existing mode and rig constraints, planned-filter ownership labels, and this device's journal history still apply.
+
+Home wins when opportunities are comparable. A trip needs a meaningful target-window or dark-sky benefit; bright planets do not favor JGAP merely for its Bortle class. Automatic plans require at least an hour for deep sky or twenty minutes for lunar/planetary work and exclude mosaics, unknown deep-sky framing, and unsuitable selected filters. The **≈** cue remains on estimates. The top conditions score stays independent of these choices.
+
+Source credit is a quiet linked line beside the weather. **Forecast details** at the bottom contains provider retrieval times, supporting weather measurements, model/credits, diagnostics and the update check. Meaningful hazards and stale/missing coverage remain visible.
+
+See the [v1.14 implementation and validation record](docs/releases/2026-09-21-v1.14-travel-night-plan.md). A selectable second travel site, alternate-site research, journal synchronization and remote conversational AI remain future work.
+
+## v1.13 — A full week, Imaging Targets and an observing journal (original release)
 
 Every night with sufficient weather coverage has a score on the same 0–100 scale. **≈** identifies an estimate that uses available data, usually Foreca cloud/wind/dew beyond Astrospheric's detailed horizon. Missing seeing/transparency stay unknown. The general conditions score no longer includes Moon, and never changes with a rig, filter or subject choice. Local Moon geometry now supplies the whole week without extra Moon API requests.
 

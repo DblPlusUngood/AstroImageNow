@@ -3,6 +3,15 @@ const SiteForecasts=(()=>{
   const Providers=typeof module!=="undefined"?require("./providers.js"):AstroProviders;
   const KEY="astroImageNowSiteForecastsV1";
   const key=(site,settings)=>JSON.stringify([site.id,site.lat,site.lon,settings.weatherSource]);
+  function pair(sites=[]){
+    // Resolve existing profiles, including generated IDs. Never invent coordinates or
+    // choose an arbitrary profile when names are ambiguous.
+    const unique=predicate=>{const matches=sites.filter(predicate);return matches.length===1?matches[0]:null};
+    const home=unique(s=>s.id==="home"||/^home\b/i.test(s.name||""));
+    const jgap=unique(s=>s.id==="jgap"||/\bjgap\b|john glenn astro(?:nomy)? park/i.test(s.name||""));
+    if(home&&home===jgap)return{home:null,jgap:null,sites:[],missing:["Home","JGAP"]};
+    return{home,jgap,sites:[home,jgap].filter(Boolean),missing:[!home&&"Home",!jgap&&"JGAP"].filter(Boolean)};
+  }
   function create(storage){
     let entries=new Map(),generation=0,controller=null;
     try{
@@ -34,11 +43,11 @@ const SiteForecasts=(()=>{
         if(id!==generation)return;
         const forecast=Providers.mergeAstronomy(results[1].data,results[2].data);
         if(forecast)forecast.meta.fetchedAt=results.slice(1).filter(r=>r.data).map(r=>r.record.fetchedAt).sort().at(-1);
-        put(site,captured,{forecast:forecast||previous?.forecast,weather:results[0].data||previous?.weather,forecastStale:!forecast,weatherStale:!results[0].data});onChange();
+        put(site,captured,{forecast:forecast||previous?.forecast,weather:results[0].data||previous?.weather,forecastStale:!forecast&&!!previous?.forecast,weatherStale:!results[0].data&&!!previous?.weather});onChange();
       }
     }
     return{get,put,cancel,refresh};
   }
-  return{create,key};
+  return{create,key,pair};
 })();
 if(typeof module!=="undefined")module.exports=SiteForecasts;
