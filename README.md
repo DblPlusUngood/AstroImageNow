@@ -122,9 +122,9 @@ node --check sw.js
 node tests/visual-server.js
 ```
 
-Open `http://127.0.0.1:4173/visual-test` for synthetic provider data. The fixture uses dummy credentials and overwrites settings **only on that localhost origin**. Service-worker registration is stubbed in the fixture; service-worker behavior is separately covered by tests. Open `/` for a normal local installation with its own settings.
+For synthetic provider data, start a separate instance with `PORT=4174 node tests/visual-server.js` and open `http://127.0.0.1:4174/visual-test`. Keep the real local app at `http://127.0.0.1:4173/`. **The fixture overwrites settings on its origin: `/visual-test` and `/` on the same port share credentials and forecast storage.** Use a separate port or browser profile for fixtures. Service-worker registration is stubbed in the visual fixture; PWA update behavior needs a separate app-root check.
 
-The current suite has 81 tests. Rebuilding the catalog additionally requires Python 3 (`python3 scripts/build-catalog.py`); normal app use and Node tests do not.
+The current suite has 102 tests. Rebuilding the catalog additionally requires Python 3 (`python3 scripts/build-catalog.py`); normal app use and Node tests do not.
 
 v1.11.1 fixes offline reloads from the **Plan targets** section anchor. The worker strips only the URL fragment before looking up the same cached document; provider and unrelated-site requests still bypass it.
 
@@ -134,9 +134,13 @@ An existing v1.9 installation does not yet have the new update controls. Close A
 
 Settings are device/browser-local. Saving a new token or Home/JGAP on desktop does not synchronize them to the iPhone Home Screen app. Enter the token in the phone's password field if it still has the old token.
 
+## v1.14.1 — Remaining-night weather coverage
+
+The dashboard assesses weather hazards from the current hourly interval through the end of the selected night. Elapsed hours no longer cause CHECK WEATHER when Foreca starts at the current hour. Missing current/future weather and actual hazards still prevent a go-ahead. The whole-night astronomy score and window are unchanged. See [the live diagnosis and validation record](docs/assessments/2026-10-18-api-diagnostic/diagnosis.md).
+
 ## v1.3 — API response parser corrected
 
-Astrospheric v2 returns forecast values inside `HourlyForecast[]`. Each hourly
+The successful live Astrospheric v2 response rechecked on October 18, 2026 returns forecast values inside `HourlyForecast[]`. The current documentation example shows a different per-variable-array shape; the verified live response takes precedence for this fix. Each hourly
 record contains the requested variables directly, such as `Cloud.ActualValue`,
 `Seeing.ActualValue`, and `Temperature.ActualValue`.
 

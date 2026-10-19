@@ -2,7 +2,7 @@
 
 const Providers=typeof module!=="undefined"?require("./providers.js"):AstroProviders;
 const API_BASE=Providers.ASTRO_BASE;
-const APP_VERSION="1.14.0";
+const APP_VERSION="1.14.1";
 const SiteStore=typeof module!=="undefined"?require("./site-forecasts.js"):SiteForecasts;
 let siteForecastStore=null,siteStorage=null,comparisonBusy=false;
 function siteStore(){
@@ -331,7 +331,14 @@ function visibilityToMiles(value,unit="m"){
   return numeric/1609.344;
 }
 
-function weatherSummaryForRows(rows,weather=state.weather){
+function weatherSummaryForRows(rows,weather=state.weather,now=null){
+  // Dashboard decisions concern the remaining night. Keep the current hourly
+  // interval; only completed hours may be omitted from hazard coverage.
+  // Callers evaluating a specific historical/target interval omit `now`.
+  if(now!==null){
+    const currentHour=Math.floor(now/3600000)*3600000;
+    rows=rows?.filter(row=>Date.parse(row.UTCForecastHour)>=currentHour);
+  }
   if(!weather||!Array.isArray(weather.hourly?.time)||!rows?.length)return null;
   const start=Date.parse(rows[0].UTCForecastHour)-31*60*1000;
   const end=Date.parse(rows[rows.length-1].UTCForecastHour)+31*60*1000;
@@ -630,7 +637,7 @@ function renderOutlook(nights,timeZone){
   $("outlookSub").textContent="";
   $("nightOutlook").innerHTML=nights.map((rows,index)=>{
     const summary=summaryForNight(rows,moonForNight(index));
-    const weather=weatherSummaryForRows(rows);
+    const weather=weatherSummaryForRows(rows,state.weather,Date.now());
     const operational=operationalVerdict(summary.score,weather,state.forecastStale||state.weatherStale)[0];
     const verdict=operational==="UNKNOWN"?"INCOMPLETE":operational;
     const status=verdict==="NO-GO"?COLORS.red:["STALE","CHECK WEATHER"].includes(verdict)?"#8b9bb0":colorForScore(summary.score);
@@ -660,7 +667,7 @@ function renderQuickLocationSelect(){
 }
 
 function renderWeatherAndPlan(rows,timeZone,components){
-  const weather=weatherSummaryForRows(rows);
+  const weather=weatherSummaryForRows(rows,state.weather,Date.now());
 
   if(weather){
     $("weatherNow").textContent=weather.currentTemperature===null?"—":`${Math.round(weather.currentTemperature)}°F`;
@@ -753,7 +760,7 @@ function render(){
   const center=summary.center;
   const components=summary.components;
   const overall=summary.score;
-  const weather=weatherSummaryForRows(rows);
+  const weather=weatherSummaryForRows(rows,state.weather,Date.now());
   const [verdict,title]=operationalVerdict(overall,weather,state.forecastStale||state.weatherStale);
   const status=verdict==="NO-GO"?COLORS.red:verdict==="STALE"||verdict==="CHECK WEATHER"?"#8b9bb0":colorForScore(overall);
   const nightLabel=nightLabelFor(rows,state.selectedNightIndex,timeZone);
@@ -897,7 +904,7 @@ function targetPlanningWeather(nights,date,timeZone){
   const index=nights.findIndex(rows=>nightKey(rows,timeZone)===date);
   if(index<0)return{severity:"unknown",message:"Geometry only: no current forecast covers this night. Recheck weather before committing."};
   if(state.weatherStale||state.forecastStale)return{severity:"unknown",message:"Saved forecast is stale. Target geometry is calculated for the chosen date; refresh conditions before setup."};
-  const rows=nights[index],weather=weatherSummaryForRows(rows),summary=summaryForNight(rows,moonForNight(index));
+  const rows=nights[index],weather=weatherSummaryForRows(rows,state.weather,Date.now()),summary=summaryForNight(rows,moonForNight(index));
   if(weather?.severity==="danger")return{severity:"danger",message:`Weather blocks setup: ${weather.watch}. Targets below are planning candidates for this date, not a go-ahead.`};
   if(!weather||!weather.complete)return{severity:"unknown",message:"Weather hazards are not fully assessed. Geometry alone cannot establish a safe imaging opportunity."};
   if(!Number.isFinite(summary.score))return{severity:"unknown",message:`Weather: ${weather.watch}. Astronomy forecast detail is incomplete; geometry and framing remain available.`};
