@@ -6,7 +6,7 @@ const vm=require("node:vm");
 function worker(){
   const handlers={},deleted=[],cached=[],matched=[],policies=[];
   let skipped=false;
-  const context={URL,Request,Set,Promise,self:{location:"https://example.test/AstroImageNow/sw.js",addEventListener:(name,handler)=>handlers[name]=handler,skipWaiting:()=>{skipped=true}},caches:{open:async()=>({addAll:async requests=>{cached.push(...requests.map(r=>"./"+new URL(r.url).pathname.slice("/AstroImageNow/".length)));policies.push(...requests.map(r=>r.cache))},match:async key=>{matched.push(key);return"cached shell"}}),keys:async()=>["astro-image-now-v1.9-release-1","astro-image-now-v1.10.0","astro-image-now-v1.11.0","astro-image-now-v1.11.1","astro-image-now-v1.11.2","astro-image-now-v1.12.0","astro-image-now-v1.13.0","unrelated-project"],delete:async key=>deleted.push(key)},fetch:async()=>"network"};
+  const context={URL,Request,Set,Promise,self:{location:"https://example.test/AstroImageNow/sw.js",addEventListener:(name,handler)=>handlers[name]=handler,skipWaiting:()=>{skipped=true}},caches:{open:async()=>({addAll:async requests=>{cached.push(...requests.map(r=>"./"+new URL(r.url).pathname.slice("/AstroImageNow/".length)));policies.push(...requests.map(r=>r.cache))},match:async key=>{matched.push(key);return"cached shell"}}),keys:async()=>["astro-image-now-v1.9-release-1","astro-image-now-v1.10.0","astro-image-now-v1.11.0","astro-image-now-v1.11.1","astro-image-now-v1.11.2","astro-image-now-v1.12.0","astro-image-now-v1.13.0","astro-image-now-v1.14.0","unrelated-project"],delete:async key=>deleted.push(key)},fetch:async()=>"network"};
   vm.runInNewContext(fs.readFileSync(require.resolve("../sw.js"),"utf8"),context);
   return{handlers,deleted,cached,matched,policies,get skipped(){return skipped}};
 }
@@ -15,7 +15,7 @@ test("service worker installs the provider script and deletes only obsolete app 
   w.handlers.install({waitUntil:p=>pending=p});await pending;
   assert.ok(w.cached.includes("./providers.js"));assert.equal(w.skipped,false);
   w.handlers.activate({waitUntil:p=>pending=p});await pending;
-  assert.deepEqual(w.deleted,["astro-image-now-v1.9-release-1","astro-image-now-v1.10.0","astro-image-now-v1.11.0","astro-image-now-v1.11.1","astro-image-now-v1.11.2","astro-image-now-v1.12.0","astro-image-now-v1.13.0"]);
+  assert.deepEqual(w.deleted,["astro-image-now-v1.9-release-1","astro-image-now-v1.10.0","astro-image-now-v1.11.0","astro-image-now-v1.11.1","astro-image-now-v1.11.2","astro-image-now-v1.12.0","astro-image-now-v1.13.0","astro-image-now-v1.14.0"]);
   w.handlers.message({data:{type:"APPLY_UPDATE"}});assert.equal(w.skipped,true);
 });
 test("offline section-anchor navigation uses the same cached document",async()=>{
